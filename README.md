@@ -25,6 +25,8 @@ pnpm verify              # format, lint, typecheck, dependency rules, suppressio
 
 In an existing checkout, run `pnpm install --force` once so the husky git hooks are installed (pnpm skips `prepare` on an up-to-date install).
 
+Property tests (fast-check) run from a fixed seed; `FC_SEED=<n> pnpm test` explores another one.
+
 `pnpm verify` is the single quality gate; individual steps are `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm deps`, `pnpm check:suppressions`, `pnpm test`, and `pnpm build`. `docker compose up` (Kafka + Elasticsearch) arrives later in Phase 1.
 
 ### Commit gates

@@ -8,5 +8,5 @@
     "sourceMap": false,
     "noEmit": true
   },
-  "include": ["*.config.ts"]
+  "include": ["*.config.ts", "vitest.setup.ts"]
 }

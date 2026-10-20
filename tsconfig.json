@@ -3,6 +3,9 @@
   "files": [],
   "references": [
     {
+      "path": "packages/schemas"
+    },
+    {
       "path": "tools/arch-rules"
     },
     {

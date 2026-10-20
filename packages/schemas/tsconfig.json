@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // Shared by Node services and the browser UI: no Node or DOM globals in this package.
+    "types": []
+  },
+  "include": ["src"]
+}

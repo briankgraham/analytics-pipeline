@@ -11,6 +11,7 @@ export default defineConfig({
   ssr: { resolve: { conditions, externalConditions: conditions } },
   test: {
     passWithNoTests: true,
+    setupFiles: ['./vitest.setup.ts'],
     restoreMocks: true,
     projects: [
       {
