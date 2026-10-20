@@ -4,6 +4,9 @@
   "references": [
     {
       "path": "tools/arch-rules"
+    },
+    {
+      "path": "tools/hooks"
     }
   ]
 }

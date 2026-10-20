@@ -1,0 +1,1 @@
+node tools/hooks/src/cli/check-commit-msg.main.ts "$1"

@@ -3,7 +3,7 @@
 See `../CLAUDE.md` for how we work across projects. Full design: `docs/design.md`; decisions and rationale: the Decision log below and `docs/adr/`. If they disagree, this file wins.
 
 ## Non-negotiable rules (every session, no exceptions)
-1. Never commit unless `pnpm verify` passes (typecheck, lint, format, dependency rules, tests, 100% coverage on lines/branches/functions/statements, build). Enforcement (CI, husky, `commit-msg` check, Claude Code hook) is built in Phase 1; until the commit that adds it, commits are docs-only and exempt, and each one still gets a fresh-context review.
+1. Never commit unless `pnpm verify` passes (typecheck, lint, format, dependency rules, tests, 100% coverage on lines/branches/functions/statements, build). Enforced by `scripts/verify-gate.sh` (husky pre-commit and a Claude Code PreToolUse hook), a `commit-msg` check, and CI (ADR-0002). Never commit on `main`; changes reach it by PR. Stage everything first, then commit with `-F <file>` in a separate command; the Claude hook gates any Bash command that mentions a commit, so write such text with an editor tool, not a heredoc.
 2. Tests are written with the code, never after. Domain logic is test-first (red, green, refactor).
 3. Before every commit or PR, review the diff against `CODE_REVIEW.md` using a **fresh-context reviewer** (subagent or `/code-review`), not the author's own context. Fix **all** blocker, major, and minor findings, then rerun the review until it reports no blocker, major, or minor findings. Fix nits if cheap. If I believe a finding is wrong, do **not** skip it silently: tell the user with reasoning and let them decide. Put the review summary (found / fixed / flagged) in the commit body as a `Review:` line.
 4. No new coverage exclusions, `eslint-disable`, `@ts-ignore`, or `any` without explicit user approval and a one-line reason comment. The complete list of allowed coverage exclusions is in `docs/design.md` (Testing standard); adding to it needs approval.
@@ -50,7 +50,7 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 - `llm-request-gateway`: can ship its logs here later.
 
 ## Status
-Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). **Phase 1 in progress on branch `phase-1/skeleton`** (never commit to `main`; PR only): (a) toolchain and `pnpm verify` done; next (b) enforcement. Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
+Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). **Phase 1 in progress on branch `phase-1/skeleton`** (never commit to `main`; PR only): (a) toolchain and `pnpm verify` and (b) enforcement done; next (c) shared packages. Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
 
 ### Starting a fresh session (handoff)
 1. Read this file, `docs/design.md`, and `CODE_REVIEW.md`. Open in plan mode: the user wants thorough planning, not short plans.
@@ -86,3 +86,4 @@ Phases: 1 skeleton (workspace, tooling, CI, compose, shared packages, ADRs, Kafk
 - 2026-10-20: Side topics and `alerts` (7-day local retention): `events.late` and `events.rejected` keyed `tenantId:eventId`, `events.dlq` keyed `sourceTopic:partition:offset`, `alerts` keyed by alert id; window records carry `rejectedCount` so undercounts are visible.
 - 2026-10-20: `revision = (count + rejectedCount)*2 + closed` so rejection-only updates are not dropped as stale; `events.dlq` is keyed by source topic:partition:offset (undecodable input has no event id); evaluator per-series state expires after 1 h of event time.
 - 2026-10-20: Toolchain pinned: Node 24.22.0 LTS (26 not LTS yet), pnpm 12.14.0 via corepack, TypeScript 6.0.3 for tsc and ESLint (typescript-eslint caps at <6.1), ESM, inline lint suppressions disabled, dependency rules fixture-tested (ADR-0001).
+- 2026-10-20: Commit gates: one `verify-gate.sh` (no commits on main, clean tree, `pnpm verify`, tree-hash stamp) behind husky and a Claude Code hook that also denies hook bypasses; `commit-msg` requires Conventional Commits and a `Review:` line; CI re-checks verify and every PR commit message; `main` protected (ADR-0002).

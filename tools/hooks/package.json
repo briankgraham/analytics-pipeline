@@ -1,0 +1,9 @@
+{
+  "name": "@obs/hooks",
+  "private": true,
+  "type": "module",
+  "description": "Commit gates: commit-message check, Claude Code commit hook, and the shared verify gate.",
+  "devDependencies": {
+    "vitest": "5.0.5"
+  }
+}
