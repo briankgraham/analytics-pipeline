@@ -70,7 +70,7 @@ real-time-analytics-pipeline/
 
 ## Code quality standard (what reviews check against)
 Tooling, enforced in CI and pre-commit (from Phase 1):
-- `tsc --noEmit` with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`; ESLint with `typescript-eslint` strict-type-checked; Prettier; `dependency-cruiser` to forbid service-to-service imports (services share only `packages/*`).
+- `tsc -b` (project references) with `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`; ESLint with `typescript-eslint` strict-type-checked; Prettier; `dependency-cruiser` to forbid service-to-service imports (services share only `packages/*`).
 - Tests: Vitest unit tests for pure logic (windowing, watermarks, rules, sketches); **property-based tests (fast-check)** that shuffled/duplicated event streams produce identical aggregates; integration tests with Testcontainers (real Kafka + ES); Playwright e2e for the dashboard. Coverage gate is 100% (see Testing standard).
 - Conventions: Conventional Commits, small PRs, ADR for any decision affecting >1 service.
 - Koa conventions: ordered middleware (error handler → request ID → logger → auth → rate limit → body parser → router); routes are thin, logic lives in service modules; zod validation at every boundary; typed context; structured pino logs with request/event IDs; `/healthz` and `/readyz`; graceful shutdown (stop intake, flush producer, commit offsets).

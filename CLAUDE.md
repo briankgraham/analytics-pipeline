@@ -40,7 +40,7 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 - Ingest `202` means durably in Kafka. Event `id` (ULID) is the idempotency key. Reject `ts` > 30 s in the future (never clamp).
 
 ## Toolchain notes
-- Local machine has Node v25 (non-LTS) and no pnpm at project start. At Phase 1 time pick the current even-numbered LTS, record it in an ADR, and pin it (`.nvmrc`, `engines`, Docker `node:<lts>`); pin pnpm via the `packageManager` field and `corepack enable`.
+- Node 24.22.0 LTS (`.nvmrc`, `engines`, Docker `node:24.22.0-*`), pnpm 12.14.0 via corepack, TypeScript 6.0.3 (capped by typescript-eslint; not TS 7), ESM only, `@obs/source` export condition for dev resolution (ADR-0001). Shell commands need `source ~/.nvm/nvm.sh && nvm use` first; the machine default is Node 25. pnpm settings go in `pnpm-workspace.yaml`, not `.npmrc`.
 - Kafka client: `@confluentinc/kafka-javascript` behind our own interface. Phase 1 verifies maintenance status and benchmarks against kafkajs before locking in.
 
 ## Related projects
@@ -50,7 +50,7 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 - `llm-request-gateway`: can ship its logs here later.
 
 ## Status
-Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). No code yet. **Next: Phase 1 (skeleton).** Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
+Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). **Phase 1 in progress on branch `phase-1/skeleton`** (never commit to `main`; PR only): (a) toolchain and `pnpm verify` done; next (b) enforcement. Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
 
 ### Starting a fresh session (handoff)
 1. Read this file, `docs/design.md`, and `CODE_REVIEW.md`. Open in plan mode: the user wants thorough planning, not short plans.
@@ -85,3 +85,4 @@ Phases: 1 skeleton (workspace, tooling, CI, compose, shared packages, ADRs, Kafk
 - 2026-10-20: Aggregator caps: 5,000 open windows per partition, 100,000 seen keys per window, 500,000 per partition; overflow goes to `events.rejected` (never a pause, which would stop the watermark and deadlock the partition). Check order per event: watermark, too-late, seen-set, caps. Worst-case checkpoint budget ~33 MB uncompressed, under the ES request limit.
 - 2026-10-20: Side topics and `alerts` (7-day local retention): `events.late` and `events.rejected` keyed `tenantId:eventId`, `events.dlq` keyed `sourceTopic:partition:offset`, `alerts` keyed by alert id; window records carry `rejectedCount` so undercounts are visible.
 - 2026-10-20: `revision = (count + rejectedCount)*2 + closed` so rejection-only updates are not dropped as stale; `events.dlq` is keyed by source topic:partition:offset (undecodable input has no event id); evaluator per-series state expires after 1 h of event time.
+- 2026-10-20: Toolchain pinned: Node 24.22.0 LTS (26 not LTS yet), pnpm 12.14.0 via corepack, TypeScript 6.0.3 for tsc and ESLint (typescript-eslint caps at <6.1), ESM, inline lint suppressions disabled, dependency rules fixture-tested (ADR-0001).

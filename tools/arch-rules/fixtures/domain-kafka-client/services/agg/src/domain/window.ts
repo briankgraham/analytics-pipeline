@@ -1,0 +1,1 @@
+import '@confluentinc/kafka-javascript';

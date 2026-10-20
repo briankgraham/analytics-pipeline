@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - services/*
+  - apps/*
+  - tools/*
+
+engineStrict: true
+saveExact: true

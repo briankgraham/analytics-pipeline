@@ -1,0 +1,7 @@
+{
+  "name": "p",
+  "private": true,
+  "devDependencies": {
+    "vitest": "5.0.5"
+  }
+}

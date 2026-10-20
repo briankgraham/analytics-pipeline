@@ -1,0 +1,32 @@
+{
+  "name": "observability-platform",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.22.0 <25"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -b && tsc -p tsconfig.tools.json",
+    "deps": "sh scripts/deps.sh",
+    "check:suppressions": "sh scripts/check-suppressions.sh",
+    "test": "vitest run --coverage",
+    "build": "pnpm -r --if-present build",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm deps && pnpm check:suppressions && pnpm test && pnpm build"
+  },
+  "packageManager": "pnpm@12.14.0+sha512.c18ba6d87993d3d164cb5e8948f32b2c06ee854487e06cd8d86781342fb3e5bb4634367034711e86802baa9c37bea906ce1929ad08d70884c97d801df13389a6",
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.0.5",
+    "dependency-cruiser": "18.7.0",
+    "eslint": "10.13.0",
+    "jiti": "2.7.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  }
+}

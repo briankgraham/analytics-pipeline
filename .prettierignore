@@ -1,0 +1,7 @@
+# Generated or vendored
+pnpm-lock.yaml
+coverage/
+dist/
+
+# Markdown is hand-wrapped (design tables); a one-time reformat would bury review diffs (ADR-0001)
+*.md
