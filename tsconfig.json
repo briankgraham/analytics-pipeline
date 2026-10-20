@@ -6,6 +6,9 @@
       "path": "packages/schemas"
     },
     {
+      "path": "packages/config"
+    },
+    {
       "path": "tools/arch-rules"
     },
     {

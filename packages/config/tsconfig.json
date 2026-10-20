@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // The env is passed in by each main.ts; this package never touches process globals.
+    "types": []
+  },
+  "include": ["src"],
+  "references": [{ "path": "../schemas" }]
+}
