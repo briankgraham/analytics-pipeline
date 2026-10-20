@@ -40,7 +40,7 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 - Ingest `202` means durably in Kafka. Event `id` (ULID) is the idempotency key. Reject `ts` > 30 s in the future (never clamp).
 
 ## Toolchain notes
-- Local machine has Node v25 (non-LTS) and no pnpm at project start. Pin Node LTS (`.nvmrc`, `engines`, Docker `node:<lts>`), and use `corepack enable` for pnpm.
+- Local machine has Node v25 (non-LTS) and no pnpm at project start. At Phase 1 time pick the current even-numbered LTS, record it in an ADR, and pin it (`.nvmrc`, `engines`, Docker `node:<lts>`); pin pnpm via the `packageManager` field and `corepack enable`.
 - Kafka client: `@confluentinc/kafka-javascript` behind our own interface. Phase 1 verifies maintenance status and benchmarks against kafkajs before locking in.
 
 ## Related projects
@@ -50,7 +50,18 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 - `llm-request-gateway`: can ship its logs here later.
 
 ## Status
-Design approved 2026-10-20. Phase 1 (skeleton) next. No code yet.
+Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). No code yet. **Next: Phase 1 (skeleton).** Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
+
+### Starting a fresh session (handoff)
+1. Read this file, `docs/design.md`, and `CODE_REVIEW.md`. Open in plan mode: the user wants thorough planning, not short plans.
+2. Phase 1 proposal, in order, one commit each (each reviewed fresh-context before commit):
+   - a. Toolchain: pin Node LTS (`.nvmrc`, `engines`, Docker base), `corepack enable` for pnpm, pnpm workspace skeleton, strict `tsconfig`, ESLint (typescript-eslint strict-type-checked), Prettier, Vitest with the 100% coverage gate, dependency-cruiser, and the single `pnpm verify` entry point (typecheck, lint, format, dependency rules, tests, coverage, build). This commit is not docs-only: it must itself pass `pnpm verify`, including the empty case (Vitest `passWithNoTests` or equivalent).
+   - b. Enforcement: husky pre-commit, `commit-msg` check for the `Review:` line, Claude Code PreToolUse hook blocking `git commit` unless `pnpm verify` passes (use the `update-config` skill), GitHub Actions CI, PR template.
+   - c. `packages/schemas`, `config`, `logger`, then `packages/kafka` after the client benchmark (`@confluentinc/kafka-javascript` vs `kafkajs`: maintenance status, throughput, API fit; record the result in an ADR).
+   - d. `docker-compose.yml` with Kafka (KRaft) and Elasticsearch, healthchecks, topic creation (see the Topic settings paragraph in `docs/design.md`: `events.raw` 12 partitions, 1 h retention locally; `aggregates` 12 partitions, compact+delete, 6 h; `events.rejected` 12 partitions with explicit partition = input partition; `events.late`, `events.dlq`, `alerts` 1 partition each; side topics and `alerts` 7 days).
+   - e. Backfill ADRs for the cross-service decisions in the log below (rule 6).
+3. Domain code is test-first (red, green, refactor), starting with the pure classes (`WindowAssigner`, `WatermarkTracker`, `WindowStore`, `LatencySketch` using DDSketch) in Phase 3, not before the Phase 1 gates exist.
+4. When scripting multi-file doc edits, assert each replacement matches once, save every file, and grep afterwards (see `docs/notes.md`).
 
 Phases: 1 skeleton (workspace, tooling, CI, compose, shared packages, ADRs, Kafka client benchmark); 2 ingest, indexer, generator, search; 3 aggregator + SSE dashboard; 4 alerts, DLQ, rate limiting; 5 chaos scripts, measured numbers, README; 6 out of scope for now (revisit after Phase 5).
 
@@ -72,5 +83,5 @@ Phases: 1 skeleton (workspace, tooling, CI, compose, shared packages, ADRs, Kafk
 - 2026-10-20: Live-map safety: `tenantId`/`env`/rule ids restricted to `^[a-z0-9-]{1,64}$` (composite IDs unambiguous); no per-tenant series limit at ingest in v1 (needs shared state; planned for v2); query-api map caps series (200 per tenant, 15,625 per instance) with at most 32 windows each so entries are hard-bounded, evicts by window start before admitting, sheds only never-seen series, and flags `partial` per tenant for 30 min after a shed (on `/v1/series`, the stream's snapshot-meta event, and every heartbeat); live endpoints (not `/readyz`) are gated on catch-up and lag; SSE streams re-check the key and are connection- and buffer-bounded.
 - 2026-10-20: Alerts reach the UI by polling ES (`/v1/alerts`), not SSE; the evaluator ignores windows at or before its last-evaluated start, and a missing window breaks a streak.
 - 2026-10-20: Aggregator caps: 5,000 open windows per partition, 100,000 seen keys per window, 500,000 per partition; overflow goes to `events.rejected` (never a pause, which would stop the watermark and deadlock the partition). Check order per event: watermark, too-late, seen-set, caps. Worst-case checkpoint budget ~33 MB uncompressed, under the ES request limit.
-- 2026-10-20: Side topics (7-day retention): `events.late` and `events.rejected` keyed `tenantId:eventId`, `events.dlq` keyed `sourceTopic:partition:offset`; window records carry `rejectedCount` so undercounts are visible.
+- 2026-10-20: Side topics and `alerts` (7-day local retention): `events.late` and `events.rejected` keyed `tenantId:eventId`, `events.dlq` keyed `sourceTopic:partition:offset`, `alerts` keyed by alert id; window records carry `rejectedCount` so undercounts are visible.
 - 2026-10-20: `revision = (count + rejectedCount)*2 + closed` so rejection-only updates are not dropped as stale; `events.dlq` is keyed by source topic:partition:offset (undecodable input has no event id); evaluator per-series state expires after 1 h of event time.

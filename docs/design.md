@@ -40,6 +40,8 @@ Design settled 2026-10-20. The Decision log in the project `CLAUDE.md` records w
 
 Side topics (`events.late` and `events.rejected` keyed `tenantId:eventId`; `events.dlq` keyed `sourceTopic:partition:offset`, since undecodable bytes carry no event id): `events.dlq` (poison/invalid input), `events.late` (too late for a closed window), `events.rejected` (cap overflow, see Deep dive 2). Retention 7 days.
 
+Topic settings (local): `events.raw` 12 partitions, 1 h retention; `aggregates` 12 partitions, compact+delete, 6 h; `events.rejected` 12 partitions with explicit partition = input partition; `events.late`, `events.dlq`, and `alerts` 1 partition each (not partition-aligned; raise if throughput needs it); `alerts` is keyed by alert id with a delete cleanup policy; side topics and `alerts` have 7-day retention (a local default, not a hard requirement).
+
 Shared packages: `packages/schemas` (zod event/alert schemas + inferred types), `packages/kafka` (client factory, producer/consumer wrappers, graceful shutdown), `packages/config` (env parsing), `packages/logger` (pino).
 
 ### Key design choices to defend
