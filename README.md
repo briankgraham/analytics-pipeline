@@ -2,7 +2,7 @@
 
 A mini Datadog/Sentry built to explore stream processing end to end. Apps send logs and events to an ingest API; Kafka buffers them; stream processors compute windowed aggregates (counts, error rates, latency percentiles) and alerts; Elasticsearch serves full-text search and aggregates; a React dashboard shows it live.
 
-**Status:** Phase 1 (skeleton) in progress: toolchain, `pnpm verify`, commit gates, shared packages (schemas, config, logger), and the local Kafka + Elasticsearch stack are in place. See [`docs/design.md`](docs/design.md) for the architecture, tradeoffs, and capacity numbers, and [`CODE_REVIEW.md`](CODE_REVIEW.md) for the review standard.
+**Status:** Phase 1 (skeleton) in progress: toolchain, `pnpm verify`, commit gates, shared packages (schemas, config, logger), the local Kafka + Elasticsearch stack, and the Kafka client benchmark ([ADR-0003](docs/adr/0003-kafka-client.md)) are in place. See [`docs/design.md`](docs/design.md) for the architecture, tradeoffs, and capacity numbers, and [`CODE_REVIEW.md`](CODE_REVIEW.md) for the review standard.
 
 ## What it demonstrates
 - Event time vs processing time, per-partition watermarks, late-event correction
@@ -43,6 +43,9 @@ docker compose down -v                            # stop and delete all local da
 | Elasticsearch (single node) | `http://127.0.0.1:9200` | `http://elasticsearch:9200` |
 
 Topics, partition counts, and configs (retention, segment size, compaction) are declared once in `infra/kafka/topics.conf`; the init converges each topic to exactly that config set, a test keeps it in sync with the code and the design, and topic auto-creation is disabled. Partition counts are never changed in place (that remaps keys): to change one, `docker compose down -v`. Ports bind to 127.0.0.1 only. Local Elasticsearch runs **without security** (no TLS, no auth) and Kafka uses plaintext listeners: fine for a laptop, never for a shared host. The stack needs about 3 GB of Docker memory (Elasticsearch heap 1 GB, container limit 2 GB).
+
+### Kafka client benchmark
+`pnpm --filter @obs/bench-kafka-client bench` (with `docker compose up -d --wait kafka`) compares `@confluentinc/kafka-javascript` (default and `linger.ms=0`) and `kafkajs`: throughput on 1M keyed 500 B messages, ack latency at 5k msg/s, and consume; results and the decision are in [ADR-0003](docs/adr/0003-kafka-client.md). Add `-- --messages 20000 --runs 1` for a quick run.
 
 ### Commit gates
 Every commit passes `scripts/verify-gate.sh`, which refuses commits on `main` and requires the working tree to match the index. It then runs `pnpm verify`, at most once per tree. A `commit-msg` hook requires a Conventional Commits header and a `Review:` line. Commit by staging everything and then running `git commit -F <message-file>`. CI runs the same checks on every pull request. See [ADR-0002](docs/adr/0002-commit-gates.md).

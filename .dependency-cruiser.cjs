@@ -45,6 +45,14 @@ module.exports = {
       to: { path: '^tools/' },
     },
     {
+      name: 'nothing-to-bench',
+      severity: 'error',
+      comment:
+        'bench/* holds benchmark harnesses (not coverage-gated); nothing may depend on them.',
+      from: { path: '^(packages|services|apps|tools)/' },
+      to: { path: '^bench/' },
+    },
+    {
       name: 'domain-is-io-free',
       severity: 'error',
       comment: 'Domain classes never import Kafka or Elasticsearch clients.',
@@ -92,7 +100,7 @@ module.exports = {
     // (domain-is-io-free, not-to-dev-dep) would never fire. doNotFollow is enough.
     // Anchored: an unanchored '/dist/' also matches npm packages' dist entry points.
     exclude: {
-      path: ['^(packages|services|apps|tools)/[^/]+/dist/', '^tools/arch-rules/fixtures/'],
+      path: ['^(packages|services|apps|tools|bench)/[^/]+/dist/', '^tools/arch-rules/fixtures/'],
     },
     tsPreCompilationDeps: true,
     combinedDependencies: false,

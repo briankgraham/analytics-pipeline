@@ -3,6 +3,11 @@ packages:
   - services/*
   - apps/*
   - tools/*
+  - bench/*
 
 engineStrict: true
 saveExact: true
+
+# Native addons allowed to run install scripts (pnpm blocks them by default).
+allowBuilds:
+  '@confluentinc/kafka-javascript': true

@@ -2,7 +2,7 @@
 # Run dependency-cruiser over whichever workspace roots exist (an empty workspace has none yet).
 set -eu
 roots=""
-for dir in packages services apps tools; do
+for dir in packages services apps tools bench; do
   [ -d "$dir" ] && roots="$roots $dir"
 done
 if [ -z "$roots" ]; then

@@ -3,6 +3,8 @@ import { defineConfig } from 'vitest/config';
 // Workspace packages export `@obs/source` -> ./src/index.ts so tests run against source, not dist.
 const conditions = ['@obs/source'];
 
+// bench/* is deliberately outside both test and coverage globs: benchmark harnesses are an approved
+// exclusion (2026-10-20, docs/design.md Testing standard); `nothing-to-bench` keeps them unimported.
 const workspace = '{packages,services,apps,tools}/*';
 const notTests = ['**/node_modules/**', '**/dist/**', 'tools/arch-rules/fixtures/**'];
 

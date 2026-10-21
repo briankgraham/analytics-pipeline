@@ -1,0 +1,13 @@
+{
+  "name": "@obs/bench-kafka-client",
+  "private": true,
+  "type": "module",
+  "description": "Benchmark: @confluentinc/kafka-javascript vs kafkajs against the compose broker (ADR-0003).",
+  "scripts": {
+    "bench": "node src/run.main.ts"
+  },
+  "dependencies": {
+    "@confluentinc/kafka-javascript": "1.11.0",
+    "kafkajs": "2.2.4"
+  }
+}

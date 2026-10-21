@@ -24,6 +24,8 @@ jobs:
           node-version-file: .nvmrc
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+      # The native Kafka addon (ADR-0003) must load on Linux, not just install.
+      - run: pnpm --filter @obs/bench-kafka-client exec node -e "console.log('librdkafka', require('@confluentinc/kafka-javascript').librdkafkaVersion)"
       # Same single gate as local commits (CLAUDE.md rule 1). Docker is available for Testcontainers.
       - run: pnpm verify
 

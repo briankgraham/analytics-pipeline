@@ -16,6 +16,9 @@
     },
     {
       "path": "tools/hooks"
+    },
+    {
+      "path": "bench/kafka-client"
     }
   ]
 }

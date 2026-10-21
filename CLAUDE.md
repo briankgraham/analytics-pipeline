@@ -41,7 +41,7 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 
 ## Toolchain notes
 - Node 24.22.0 LTS (`.nvmrc`, `engines`, Docker `node:24.22.0-*`), pnpm 12.14.0 via corepack, TypeScript 6.0.3 (capped by typescript-eslint; not TS 7), ESM only, `@obs/source` export condition for dev resolution (ADR-0001). Shell commands need `source ~/.nvm/nvm.sh && nvm use` first; the machine default is Node 25. pnpm settings go in `pnpm-workspace.yaml`, not `.npmrc`.
-- Kafka client: `@confluentinc/kafka-javascript` behind our own interface. Phase 1 verifies maintenance status and benchmarks against kafkajs before locking in.
+- Kafka client: `@confluentinc/kafka-javascript` 1.11.0 behind our own port in `packages/kafka` (benchmarked and decided, ADR-0003): KafkaJS-compatible API where it suffices, native API for group-less `assign` (the one capability kafkajs lacks); producers set `partitioner: 'murmur2_random'` explicitly; ingest's producer uses `linger.ms=0`. pnpm `allowBuilds` lets it fetch its native binary (supply-chain notes in the ADR).
 
 ## Related projects
 - `change-data-capture-pipeline`: shares Kafka infra (compose, topic conventions, `packages/kafka`).
@@ -50,7 +50,7 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 - `llm-request-gateway`: can ship its logs here later.
 
 ## Status
-Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). **Phase 1 in progress on branch `phase-1/skeleton`** (never commit to `main`; PR only): done: (a) toolchain and `pnpm verify`, (b) enforcement, (c) `@obs/schemas`, `@obs/config`, `@obs/logger`, (d) compose (`pnpm compose:smoke`); next: Kafka client benchmark + ADR, then `packages/kafka`, then ADR backfill. Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
+Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). **Phase 1 in progress on branch `phase-1/skeleton`** (never commit to `main`; PR only): done: (a) toolchain and `pnpm verify`, (b) enforcement, (c) `@obs/schemas`, `@obs/config`, `@obs/logger`, (d) compose (`pnpm compose:smoke`), Kafka client benchmark (ADR-0003); next: `packages/kafka`, then ADR backfill. Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
 
 ### Starting a fresh session (handoff)
 1. Read this file, `docs/design.md`, and `CODE_REVIEW.md`. Open in plan mode: the user wants thorough planning, not short plans.
@@ -87,3 +87,4 @@ Phases: 1 skeleton (workspace, tooling, CI, compose, shared packages, ADRs, Kafk
 - 2026-10-20: `revision = (count + rejectedCount)*2 + closed` so rejection-only updates are not dropped as stale; `events.dlq` is keyed by source topic:partition:offset (undecodable input has no event id); evaluator per-series state expires after 1 h of event time.
 - 2026-10-20: Toolchain pinned: Node 24.22.0 LTS (26 not LTS yet), pnpm 12.14.0 via corepack, TypeScript 6.0.3 for tsc and ESLint (typescript-eslint caps at <6.1), ESM, inline lint suppressions disabled, dependency rules fixture-tested (ADR-0001).
 - 2026-10-20: Commit gates: one `verify-gate.sh` (no commits on main, clean tree, `pnpm verify`, tree-hash stamp) behind husky and a Claude Code hook that also denies hook bypasses; `commit-msg` requires Conventional Commits and a `Review:` line; CI re-checks verify and every PR commit message; `main` protected (ADR-0002).
+- 2026-10-20: Kafka client = `@confluentinc/kafka-javascript` (benchmark: ~2.8x kafkajs produce throughput with idempotent acks=all; level median latency at 5k msg/s with linger.ms=0, kafkajs a few ms better at p99; similar consume; maintained; only it offers group-less assign); explicit murmur2 partitioner for Java-compatible key hashing (ADR-0003).

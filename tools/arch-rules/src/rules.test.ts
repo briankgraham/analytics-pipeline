@@ -16,7 +16,7 @@ async function violatedRules(fixture: string): Promise<string[]> {
     baseDir,
     ruleSet: { forbidden: config.forbidden ?? [] },
     // The real config excludes the fixtures; here they are the subject.
-    exclude: { path: ['^(packages|services|apps|tools)/[^/]+/dist/'] },
+    exclude: { path: ['^(packages|services|apps|tools|bench)/[^/]+/dist/'] },
     validate: true,
   });
   const output = result.output as ICruiseResult;
@@ -28,6 +28,7 @@ describe('dependency-cruiser rules', () => {
     ['service-to-service', ['no-service-to-service']],
     ['package-to-service', ['packages-not-to-services-or-apps']],
     ['runtime-to-tools', ['nothing-to-tools']],
+    ['package-to-bench', ['nothing-to-bench']],
     ['app-to-service', ['no-app-to-service']],
     ['service-to-app', ['no-service-to-app']],
     ['domain-kafka-client', ['domain-is-io-free', 'not-to-unresolvable']],
@@ -51,6 +52,7 @@ describe('dependency-cruiser rules', () => {
         'no-app-to-service',
         'no-circular',
         'no-service-to-app',
+        'nothing-to-bench',
         'no-service-to-service',
         'not-to-dev-dep',
         'not-to-undeclared-dep',

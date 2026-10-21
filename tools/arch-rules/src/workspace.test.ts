@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
-const roots = ['packages', 'services', 'apps', 'tools'];
+const roots = ['packages', 'services', 'apps', 'tools', 'bench'];
 
 function workspaceDirs(): string[] {
   return roots.flatMap((root) => {
