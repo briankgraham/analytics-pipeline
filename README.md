@@ -1,17 +1,22 @@
-# Observability platform (real-time analytics pipeline)
+# Analytics pipeline
 
-A mini Datadog/Sentry built to explore stream processing end to end. Apps send logs and events to an ingest API; Kafka buffers them; stream processors compute windowed aggregates (counts, error rates, latency percentiles) and alerts; Elasticsearch serves full-text search and aggregates; a React dashboard shows it live.
+A small log platform, like a tiny Datadog: apps send logs, and you search them. See
+[`docs/design.md`](docs/design.md) for how it works and what gets built next.
 
-**Status:** design approved, implementation not started. See [`docs/design.md`](docs/design.md) for the architecture, tradeoffs, and capacity numbers, and [`CODE_REVIEW.md`](CODE_REVIEW.md) for the review standard.
+Nothing runs yet; so far only the tooling is set up.
 
-## What it demonstrates
-- Event time vs processing time, per-partition watermarks, late-event correction
-- Idempotent sinks and what "exactly-once" really means (checkpointed state, deterministic IDs, versioned writes)
-- Partitioning, hot keys, rebalancing, backpressure, and DLQs
-- Elasticsearch mapping design and tenant-isolated search
+## Setup
 
-## Stack
-TypeScript, Node, Koa, React + Vite, Kafka, Elasticsearch, Docker Compose.
+You need Node 24 (see `.nvmrc`). Then:
 
-## How to run
-Not available yet. Phase 1 adds `docker compose up`.
+```sh
+corepack enable   # once per machine; makes the pinned pnpm version available
+pnpm install
+```
+
+## Checks
+
+```sh
+pnpm verify   # formatting, type checking, and tests: the same checks CI runs on the code
+pnpm format   # fix formatting
+```

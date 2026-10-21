@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Format, type check, and tests: the same `pnpm verify` you run locally.
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+
+  # Every commit title in the PR must look like `type: summary` or `type(scope): summary`.
+  commit-messages:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check commit titles
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: .+'
+          # On its own line so a git failure stops the job instead of checking nothing.
+          shas=$(git rev-list --no-merges "$BASE..$HEAD")
+          status=0
+          for sha in $shas; do
+            title=$(git log -1 --format=%s "$sha")
+            if ! printf '%s\n' "$title" | grep -Eq "$pattern"; then
+              echo "::error::commit $sha has a title that is not a Conventional Commit: $title"
+              status=1
+            fi
+          done
+          exit $status
