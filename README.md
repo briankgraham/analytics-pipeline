@@ -2,7 +2,7 @@
 
 A mini Datadog/Sentry built to explore stream processing end to end. Apps send logs and events to an ingest API; Kafka buffers them; stream processors compute windowed aggregates (counts, error rates, latency percentiles) and alerts; Elasticsearch serves full-text search and aggregates; a React dashboard shows it live.
 
-**Status:** Phase 1 (skeleton) in progress: toolchain, `pnpm verify`, commit gates, shared packages (schemas, config, logger), the local Kafka + Elasticsearch stack, and the Kafka client benchmark ([ADR-0003](docs/adr/0003-kafka-client.md)) are in place. See [`docs/design.md`](docs/design.md) for the architecture, tradeoffs, and capacity numbers, and [`CODE_REVIEW.md`](CODE_REVIEW.md) for the review standard.
+**Status:** Phase 1 (skeleton) in progress: toolchain, `pnpm verify`, commit gates, shared packages (schemas, config, logger, and the Kafka port with its in-memory fake), the local Kafka + Elasticsearch stack, and the Kafka client benchmark ([ADR-0003](docs/adr/0003-kafka-client.md)) are in place. See [`docs/design.md`](docs/design.md) for the architecture, tradeoffs, and capacity numbers, and [`CODE_REVIEW.md`](CODE_REVIEW.md) for the review standard.
 
 ## What it demonstrates
 - Event time vs processing time, per-partition watermarks, late-event correction
@@ -20,7 +20,9 @@ Prerequisites: [nvm](https://github.com/nvm-sh/nvm) (or any Node manager that re
 nvm install && nvm use   # Node 24.22.0 from .nvmrc
 corepack enable          # pnpm 12.14.0 from package.json "packageManager"
 pnpm install
-pnpm verify              # format, lint, typecheck, dependency rules, suppressions, tests (100% coverage), build
+pnpm verify              # format, lint, typecheck, dependency rules, suppressions, tests (100% coverage), build,
+                         # then import each built package with plain Node (catches ESM/CommonJS interop errors)
+                         # (integration tests start a real Kafka with Testcontainers, so Docker must be running)
 ```
 
 In an existing checkout, run `pnpm install --force` once so the husky git hooks are installed (pnpm skips `prepare` on an up-to-date install).

@@ -1,0 +1,25 @@
+{
+  "name": "@obs/kafka",
+  "private": true,
+  "type": "module",
+  "description": "Our Kafka ports (producer, consumer with offset queries) with a confluent adapter and an in-memory fake (ADR-0003).",
+  "exports": {
+    ".": {
+      "@obs/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@confluentinc/kafka-javascript": "1.11.0",
+    "@obs/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "fast-check": "4.10.2",
+    "testcontainers": "12.2.1",
+    "vitest": "5.0.5"
+  }
+}

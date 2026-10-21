@@ -4,7 +4,7 @@ Every diff is reviewed against this file before it is committed or merged. Revie
 
 ## How to run a review
 1. Read the diff, then the surrounding code of every changed function. A change that looks fine in isolation can break an invariant elsewhere.
-2. Run `pnpm verify` (typecheck, lint, format, dependency rules, tests with the 100% coverage gate, build; Stryker and Playwright run in CI). A failing check is a **blocker**; do not review further until it passes. Before Phase 1 tooling exists, a docs-only diff skips this step and is reviewed for consistency with `docs/design.md` and `CLAUDE.md` instead (see Docs-only diffs). Confirm with `git status`/`git diff --stat` that the diff touches only `*.md` files before skipping; any code, config, or tooling file means the step is not skippable.
+2. Run `pnpm verify` (typecheck, lint, format, dependency rules, tests with the 100% coverage gate, build, plain-Node import of each built package; Stryker and Playwright run in CI). A failing check is a **blocker**; do not review further until it passes. Before Phase 1 tooling exists, a docs-only diff skips this step and is reviewed for consistency with `docs/design.md` and `CLAUDE.md` instead (see Docs-only diffs). Confirm with `git status`/`git diff --stat` that the diff touches only `*.md` files before skipping; any code, config, or tooling file means the step is not skippable.
 3. Walk the checklists below. Skip a section only if the diff genuinely cannot touch it.
 4. Report findings in the format below, most severe first. If there are no findings, say what you checked so the result is auditable. Never pad the list with praise or restated code.
 
@@ -16,7 +16,14 @@ Every diff is reviewed against this file before it is committed or merged. Revie
 | **minor** | Real but low-impact: unclear naming, missing log context, weak assertion, small duplication | Fix in this change |
 | **nit** | Style or taste with no behavioral effect | Fix if cheap |
 
-The author fixes every blocker, major, and minor finding, then the review reruns until it reports no blocker, major, or minor findings. If the author believes a finding is wrong, they do not skip it silently: they report it to the user with reasoning, and the user decides.
+**Severity bar:** major and minor need a concrete, reachable failure in how the code will be used (per `docs/design.md`). Theoretical or unreachable issues are nits.
+
+## Review passes and the stopping rule
+- **Pass 1** reviews the full diff. The author fixes every blocker, major, and minor finding, and nits if cheap.
+- **Passes 2 and 3** review only the fix delta: before each pass the author stages everything and records `git write-tree`; the reviewer reads `git diff <previous-tree> <current-tree>` plus whatever code the delta touches, and does not re-audit unchanged code.
+- **Cap: 3 passes.** There is no pass 4. After pass 3, a remaining blocker or major is fixed with a targeted test (seen failing first) or escalated to the user; remaining minors and nits go to `docs/follow-ups.md` (file, scenario, suggested fix), and the commit proceeds.
+- If the author believes a finding is wrong, they do not skip it silently: they report it to the user with reasoning, and the user decides.
+- The commit's `Review:` line records passes run, found / fixed / flagged, and items logged to `docs/follow-ups.md`.
 
 ## Finding format
 ```

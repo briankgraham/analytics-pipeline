@@ -56,7 +56,7 @@ The deciding gap is group-less `assign()`, which query-api's design requires. Wi
 
 ## Decision
 - **Client:** use `@confluentinc/kafka-javascript` 1.11.0, pinned. pnpm `allowBuilds` lets it fetch its prebuilt native binary.
-- **Isolation:** services never import it. `packages/kafka` defines our own ports (producer, consumer, admin) with offsets as strings, plus an in-memory fake. The adapter uses the KafkaJS-compatible API where it suffices, and the native API for group-less `assign` (query-api). Per-partition synchronous watermark queries for the idle rule also go native where that is simpler.
+- **Isolation:** services never import it. `packages/kafka` defines our own producer and consumer ports (offset and watermark queries live on the consumer) with offsets as strings, plus an in-memory fake. The adapter uses the KafkaJS-compatible API for producers and the native API for every consumer: only it has group-less `assign` (query-api) and a pull-style `consume(n)`. Per-partition watermark and offset-by-timestamp queries are native too (async, with a request timeout).
 - **Partitioner:** producers set `partitioner: 'murmur2_random'` explicitly, the Java-compatible key hash, which matches kafkajs's DefaultPartitioner. The KafkaJS-compatible layer applies murmur2_random by default only when it is given `kafkaJS` options. The native producer defaults to `consistent_random` (CRC32), which would put a key on a different partition. Key → partition stability is what window locality rests on, so `packages/kafka` gets a contract test pinning key → partition for known keys.
 - **Producer profiles:** latency-sensitive producers (ingest) set `linger.ms=0`. Throughput producers (aggregator output, DLQ) keep the default.
 

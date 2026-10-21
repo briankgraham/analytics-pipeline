@@ -37,6 +37,8 @@ describe('dependency-cruiser rules', () => {
     ['domain-obs-kafka', ['domain-is-io-free']],
     ['circular', ['no-circular']],
     ['dev-dep', ['not-to-dev-dep']],
+    ['testing-dev-dep', []],
+    ['runtime-to-testing', ['testing-only-from-tests']],
     ['unresolvable', ['not-to-unresolvable']],
     ['undeclared-dep', ['not-to-undeclared-dep']],
     ['clean', []],
@@ -59,6 +61,7 @@ describe('dependency-cruiser rules', () => {
         'not-to-unresolvable',
         'nothing-to-tools',
         'packages-not-to-services-or-apps',
+        'testing-only-from-tests',
       ].sort(),
     );
   });

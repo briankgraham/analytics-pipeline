@@ -69,12 +69,24 @@ module.exports = {
     {
       name: 'not-to-dev-dep',
       severity: 'error',
-      comment: 'Production code must not depend on devDependencies.',
+      comment:
+        'Production code must not depend on devDependencies. Test support (src/testing/) may: it is test code by definition, and testing-only-from-tests keeps runtime code from importing it.',
       from: {
         path: '^(packages|services|apps)/[^/]+/src/',
-        pathNot: '\\.(int\\.)?test\\.tsx?$',
+        pathNot: ['\\.(int\\.)?test\\.tsx?$', '/src/testing/'],
       },
       to: { dependencyTypes: ['npm-dev'] },
+    },
+    {
+      name: 'testing-only-from-tests',
+      severity: 'error',
+      comment:
+        'Test support (contract suites, containers) is imported by tests only, never shipped.',
+      from: {
+        path: '^(packages|services|apps)/[^/]+/src/',
+        pathNot: ['\\.(int\\.)?test\\.tsx?$', '/src/testing/'],
+      },
+      to: { path: '/src/testing/' },
     },
     {
       name: 'not-to-undeclared-dep',
