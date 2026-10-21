@@ -1,0 +1,9 @@
+# Settings for stage: the last check before prod, set up like prod but smaller.
+#
+# Not used yet: nothing deploys here so far. It sits next to local.yml so every environment
+# lists the same topics (the tests check this). The fields are explained in local.yml.
+
+topics:
+  - name: logs
+    partitions: 6
+    purpose: Logs the API has accepted, waiting for the worker to save them to Elasticsearch.
