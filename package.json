@@ -12,13 +12,21 @@
     "typecheck": "tsc",
     "test": "vitest run",
     "topics": "node kafka/create-topics.ts",
+    "api": "node api/main.ts",
     "verify": "pnpm format:check && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
+    "@types/koa": "3.0.3",
     "@types/node": "24.19.2",
     "prettier": "3.9.10",
     "typescript": "6.0.3",
-    "vitest": "5.0.5",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "@koa/bodyparser": "6.1.0",
+    "@koa/router": "15.7.0",
+    "kafkajs": "2.2.4",
+    "koa": "3.2.1",
     "yaml": "2.9.1"
   }
 }

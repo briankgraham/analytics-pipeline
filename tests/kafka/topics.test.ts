@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { partitionCountFrom, readTopics } from './topics.ts';
+import { partitionCountFrom, readTopics } from '../../kafka/topics.ts';
 
 describe('readTopics', () => {
   // Every environment's config must be valid and list the same topics, even the ones not used yet.
   const environments = ['local', 'sandbox', 'stage', 'prod'];
   const topicNames = (environment: string) => {
-    const text = readFileSync(new URL(`../config/${environment}.yml`, import.meta.url), 'utf8');
+    const text = readFileSync(new URL(`../../config/${environment}.yml`, import.meta.url), 'utf8');
     return readTopics(text).map((topic) => topic.name);
   };
 
