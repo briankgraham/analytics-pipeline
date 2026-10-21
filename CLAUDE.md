@@ -50,7 +50,7 @@ Template-method base classes for lifecycle and plumbing (`BaseConsumer`, `Batchi
 - `llm-request-gateway`: can ship its logs here later.
 
 ## Status
-Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). **Phase 1 in progress on branch `phase-1/skeleton`** (never commit to `main`; PR only): (a) toolchain and `pnpm verify` and (b) enforcement done; next (c) shared packages. Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
+Design settled and committed 2026-10-20 (`babb40f`, after 12 fresh-context review passes). **Phase 1 in progress on branch `phase-1/skeleton`** (never commit to `main`; PR only): done: (a) toolchain and `pnpm verify`, (b) enforcement, (c) `@obs/schemas`, `@obs/config`, `@obs/logger`, (d) compose (`pnpm compose:smoke`); next: Kafka client benchmark + ADR, then `packages/kafka`, then ADR backfill. Background, rejected alternatives, deploy/domain notes, and process lessons are in `docs/notes.md`.
 
 ### Starting a fresh session (handoff)
 1. Read this file, `docs/design.md`, and `CODE_REVIEW.md`. Open in plan mode: the user wants thorough planning, not short plans.

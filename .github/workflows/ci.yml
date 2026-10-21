@@ -27,6 +27,14 @@ jobs:
       # Same single gate as local commits (CLAUDE.md rule 1). Docker is available for Testcontainers.
       - run: pnpm verify
 
+  compose-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Real Kafka + Elasticsearch from docker-compose.yml: topics, configs, health, idempotent init.
+      - run: sh scripts/compose-smoke.sh --down
+
   commit-messages:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04

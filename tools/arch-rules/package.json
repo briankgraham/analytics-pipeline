@@ -4,6 +4,7 @@
   "type": "module",
   "description": "Fixture tests proving the dependency-cruiser architecture rules fire.",
   "devDependencies": {
+    "@obs/schemas": "workspace:*",
     "dependency-cruiser": "18.7.0",
     "vitest": "5.0.5"
   }

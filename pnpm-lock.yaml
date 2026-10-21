@@ -247,6 +247,9 @@ importers:
 
   tools/arch-rules:
     devDependencies:
+      '@obs/schemas':
+        specifier: workspace:*
+        version: link:../../packages/schemas
       dependency-cruiser:
         specifier: 18.7.0
         version: 18.7.0
