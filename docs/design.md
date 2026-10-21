@@ -41,7 +41,7 @@ The first version keeps a log as small as possible:
 | `level`   | `error`         | `debug`, `info`, `warn`, or `error` |
 | `message` | `card declined` | the text you search                 |
 
-The shape lives in `shared/log.ts` so the API and the worker agree on it. We'll add fields (time,
+The shape lives in `logs/log.ts` so the API and the worker agree on it. We'll add fields (time,
 id, extra attributes) when a feature needs them.
 
 ## First goal
@@ -55,7 +55,7 @@ One small PR at a time:
 1. **Basics:** these docs, the tooling (TypeScript, Prettier, Vitest), and CI.
 2. **Local services:** `docker-compose.yml` that runs Kafka and Elasticsearch, and creates the Kafka
    topics listed in `config/local.yml`.
-3. **Receive logs:** `POST /logs` in the API checks a log and puts it into Kafka.
+3. **Receive logs:** `POST /v1/message` in the API (the `/v1` is the API version) checks a log and puts it into Kafka.
 4. **Save logs:** the worker reads from Kafka and saves to Elasticsearch.
 5. **Search:** `GET /search?q=word` in the API, plus a script that sends a test log. This is the first
    full demo.
