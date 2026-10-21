@@ -9,6 +9,9 @@
       "path": "packages/config"
     },
     {
+      "path": "packages/logger"
+    },
+    {
       "path": "tools/arch-rules"
     },
     {

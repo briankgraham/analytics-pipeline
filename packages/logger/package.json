@@ -1,0 +1,23 @@
+{
+  "name": "@obs/logger",
+  "private": true,
+  "type": "module",
+  "description": "Structured pino logging with secret redaction, shared by every service.",
+  "exports": {
+    ".": {
+      "@obs/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@obs/config": "workspace:*",
+    "pino": "10.4.0"
+  },
+  "devDependencies": {
+    "vitest": "5.0.5"
+  }
+}
