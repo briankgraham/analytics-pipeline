@@ -24,6 +24,10 @@ you  --------------------------- search request --> api ----------+
 4. **The worker reads logs from Kafka** and saves them to Elasticsearch.
 5. **You search** by asking the API, which asks Elasticsearch.
 
+Kafka keeps logs in named streams called topics. Every topic is listed, with what it's for, in the
+settings for each environment in `config/` (`local.yml` is the only one in use). Kafka won't create
+a topic that isn't listed.
+
 Why Kafka sits in the middle: the API stays fast even when Elasticsearch is slow, and a crashed worker
 can pick up where it left off.
 
@@ -49,7 +53,8 @@ Send one log with a script, search for a word in it, and get it back. Nothing el
 One small PR at a time:
 
 1. **Basics:** these docs, the tooling (TypeScript, Prettier, Vitest), and CI.
-2. **Local services:** `docker-compose.yml` that runs Kafka and Elasticsearch.
+2. **Local services:** `docker-compose.yml` that runs Kafka and Elasticsearch, and creates the Kafka
+   topics listed in `config/local.yml`.
 3. **Receive logs:** `POST /logs` in the API checks a log and puts it into Kafka.
 4. **Save logs:** the worker reads from Kafka and saves to Elasticsearch.
 5. **Search:** `GET /search?q=word` in the API, plus a script that sends a test log. This is the first

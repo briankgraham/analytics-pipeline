@@ -39,6 +39,8 @@ api/              HTTP server: receives logs, answers searches
 worker/           reads logs from Kafka and saves them to Elasticsearch
 scripts/          small helper scripts, such as sending a test log
 shared/log.ts     the shape of a log, used by both the API and the worker
+config/           settings for each environment: local (in use), sandbox, stage, prod
+kafka/            the script that creates Kafka topics, and the code that reads them from config
 docker-compose.yml  runs Kafka and Elasticsearch locally
 docs/design.md    what we're building, short
 ```

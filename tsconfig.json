@@ -11,6 +11,10 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
+    // Node runs .ts files directly by removing the types, so imports name the .ts file and code
+    // can only use TypeScript features that are pure types.
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "skipLibCheck": true,
     "noEmit": true
   },

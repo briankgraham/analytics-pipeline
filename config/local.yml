@@ -1,0 +1,17 @@
+# Settings for running on your own machine with `docker compose` (see README.md). This is the only
+# environment in use so far.
+#
+# topics: every Kafka topic this project uses. `pnpm topics` reads this list and creates any topic
+# that is missing. Kafka is set to never create topics on its own, so a topic that isn't listed
+# here doesn't exist, and a misspelled topic name fails instead of quietly making a new topic.
+# Each topic has:
+#   name        what the code uses to read and write it
+#   partitions  how many parallel lanes the topic is split into; more lanes let more workers read
+#               at once. It can't be changed in place; to change it locally, wipe the data with
+#               `docker compose down -v` and start again.
+#   purpose     what the topic is for, in a sentence
+
+topics:
+  - name: logs
+    partitions: 3
+    purpose: Logs the API has accepted, waiting for the worker to save them to Elasticsearch.

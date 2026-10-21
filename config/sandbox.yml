@@ -1,0 +1,9 @@
+# Settings for sandbox: a shared place to try things out.
+#
+# Not used yet: nothing deploys here so far. It sits next to local.yml so every environment
+# lists the same topics (the tests check this). The fields are explained in local.yml.
+
+topics:
+  - name: logs
+    partitions: 3
+    purpose: Logs the API has accepted, waiting for the worker to save them to Elasticsearch.
