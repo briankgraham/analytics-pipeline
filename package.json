@@ -13,6 +13,7 @@
     "test": "vitest run",
     "topics": "node kafka/create-topics.ts",
     "api": "node api/main.ts",
+    "worker": "node worker/main.ts",
     "verify": "pnpm format:check && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
@@ -23,6 +24,7 @@
     "vitest": "5.0.5"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "9.5.1",
     "@koa/bodyparser": "6.1.0",
     "@koa/router": "15.7.0",
     "kafkajs": "2.2.4",

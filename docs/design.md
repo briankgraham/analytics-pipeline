@@ -56,7 +56,9 @@ One small PR at a time:
 2. **Local services:** `docker-compose.yml` that runs Kafka and Elasticsearch, and creates the Kafka
    topics listed in `config/local.yml`.
 3. **Receive logs:** `POST /v1/message` in the API (the `/v1` is the API version) checks a log and puts it into Kafka.
-4. **Save logs:** the worker reads from Kafka and saves to Elasticsearch.
+4. **Save logs:** the worker reads from Kafka and saves to Elasticsearch. A log counts as done in
+   Kafka only after it's saved, so a crash means it's read again, never lost (rarely, saved twice).
+   A message that isn't a good log is skipped with a warning.
 5. **Search:** `GET /search?q=word` in the API, plus a script that sends a test log. This is the first
    full demo.
 
