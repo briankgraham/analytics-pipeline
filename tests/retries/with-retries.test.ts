@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { longestTotalWaitMs, withRetries } from '../../retries/with-retries.ts';
+import { longestWaitMs, withRetries } from '../../retries/with-retries.ts';
 
 const settings = { maxRetries: 3, delayMs: 100, exponential: true, jitter: false };
 const retryAnything = { ...settings, shouldRetry: () => true, onRetry: () => {} };
@@ -104,6 +104,15 @@ describe('withRetries', () => {
     expect(fn).toHaveBeenCalledTimes(4);
   });
 
+  it('waits for onRetry, and stops with its error if it throws', async () => {
+    const fn = failing(1);
+    const onRetry = async () => {
+      throw new Error('must stop');
+    };
+    await expect(withRetries(fn, { ...retryAnything, onRetry })()).rejects.toThrow('must stop');
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
   it('tries only once when maxRetries is 0', async () => {
     const fn = failing(1);
     await expect(withRetries(fn, { ...retryAnything, maxRetries: 0 })()).rejects.toThrow(
@@ -125,11 +134,11 @@ describe('withRetries', () => {
   });
 });
 
-describe('longestTotalWaitMs', () => {
-  it('adds up the waits', () => {
-    expect(longestTotalWaitMs(settings)).toBe(100 + 200 + 400);
-    expect(longestTotalWaitMs({ ...settings, exponential: false })).toBe(300);
-    expect(longestTotalWaitMs({ ...settings, maxRetries: 0 })).toBe(0);
-    expect(longestTotalWaitMs({ ...settings, jitter: true })).toBe(100 + 200 + 400);
+describe('longestWaitMs', () => {
+  it('finds the longest single wait', () => {
+    expect(longestWaitMs(settings)).toBe(400);
+    expect(longestWaitMs({ ...settings, exponential: false })).toBe(100);
+    expect(longestWaitMs({ ...settings, maxRetries: 0 })).toBe(0);
+    expect(longestWaitMs({ ...settings, jitter: true })).toBe(400);
   });
 });

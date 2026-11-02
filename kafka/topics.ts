@@ -4,6 +4,7 @@ export type Topic = {
   name: string;
   partitions: number;
   purpose: string;
+  retentionDays: number;
 };
 
 // Reads the topics list from the text of a config file (config/local.yml and the others) and checks
@@ -19,9 +20,9 @@ export function readTopics(yamlText: string): Topic[] {
   for (const [index, entry] of file.topics.entries()) {
     const where = `topic #${index + 1}`;
     if (!isObject(entry)) {
-      throw new Error(`${where} must have name, partitions, and purpose`);
+      throw new Error(`${where} must have name, partitions, purpose, and retentionDays`);
     }
-    const { name, partitions, purpose } = entry;
+    const { name, partitions, purpose, retentionDays } = entry;
     // Kafka's rules for topic names: letters, digits, '.', '_', '-', at most 249 characters, and
     // not '.' or '..'.
     if (
@@ -38,6 +39,13 @@ export function readTopics(yamlText: string): Topic[] {
     if (typeof purpose !== 'string' || purpose.trim() === '') {
       throw new Error(`${name}: purpose must say what the topic is for`);
     }
+    if (
+      typeof retentionDays !== 'number' ||
+      !Number.isInteger(retentionDays) ||
+      retentionDays < 1
+    ) {
+      throw new Error(`${name}: retentionDays must be a whole number of at least 1`);
+    }
     if (topics.some((topic) => topic.name === name)) {
       throw new Error(`${name} is listed twice`);
     }
@@ -47,7 +55,7 @@ export function readTopics(yamlText: string): Topic[] {
     if (clash) {
       throw new Error(`${name} clashes with ${clash.name}: Kafka treats '.' and '_' as the same`);
     }
-    topics.push({ name, partitions, purpose });
+    topics.push({ name, partitions, purpose, retentionDays });
   }
   return topics;
 }

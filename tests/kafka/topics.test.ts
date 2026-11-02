@@ -24,13 +24,15 @@ topics:
   - name: logs
     partitions: 3
     purpose: incoming logs
+    retentionDays: 7
   - name: alerts
     partitions: 1
     purpose: alerts to send
+    retentionDays: 30
 `;
     expect(readTopics(text)).toEqual([
-      { name: 'logs', partitions: 3, purpose: 'incoming logs' },
-      { name: 'alerts', partitions: 1, purpose: 'alerts to send' },
+      { name: 'logs', partitions: 3, purpose: 'incoming logs', retentionDays: 7 },
+      { name: 'alerts', partitions: 1, purpose: 'alerts to send', retentionDays: 30 },
     ]);
   });
 
@@ -51,16 +53,27 @@ topics:
     ['fractional partitions', 'topics: [{name: logs, partitions: 1.5, purpose: x}]', 'partitions'],
     ['a missing purpose', 'topics: [{name: logs, partitions: 3}]', 'purpose'],
     ['a blank purpose', 'topics: [{name: logs, partitions: 3, purpose: " "}]', 'purpose'],
+    ['a missing retention', 'topics: [{name: logs, partitions: 3, purpose: x}]', 'retentionDays'],
+    [
+      'zero retention',
+      'topics: [{name: logs, partitions: 3, purpose: x, retentionDays: 0}]',
+      'retentionDays',
+    ],
+    [
+      'fractional retention',
+      'topics: [{name: logs, partitions: 3, purpose: x, retentionDays: 1.5}]',
+      'retentionDays',
+    ],
     ['the name "."', 'topics: [{name: ".", partitions: 3, purpose: x}]', 'name'],
     ['the name ".."', 'topics: [{name: "..", partitions: 3, purpose: x}]', 'name'],
     [
       'names that differ only by "." and "_"',
-      'topics: [{name: a.b, partitions: 3, purpose: x}, {name: a_b, partitions: 1, purpose: y}]',
+      'topics: [{name: a.b, partitions: 3, purpose: x, retentionDays: 7}, {name: a_b, partitions: 1, purpose: y, retentionDays: 7}]',
       'a_b clashes with a.b',
     ],
     [
       'a name listed twice',
-      'topics: [{name: logs, partitions: 3, purpose: x}, {name: logs, partitions: 1, purpose: y}]',
+      'topics: [{name: logs, partitions: 3, purpose: x, retentionDays: 7}, {name: logs, partitions: 1, purpose: y, retentionDays: 7}]',
       'listed twice',
     ],
   ])('rejects %s', (_, text, message) => {

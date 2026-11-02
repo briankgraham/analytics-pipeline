@@ -1,8 +1,9 @@
-// Creates every topic in config/local.yml that doesn't exist yet. Run it with `pnpm topics` after
-// `docker compose up -d --wait`. Safe to run again: topics that already exist are left alone, but
-// a partition count that differs from the file is an error.
+// Creates every topic in config/local.yml that doesn't exist yet, and sets how long each topic keeps
+// its messages. Run it with `pnpm topics` after `docker compose up -d --wait`. Safe to run again: a
+// topic that already exists keeps its messages and gets the retention from the file, but a partition
+// count that differs from the file is an error.
 //
-// It talks to Kafka through Kafka's own command-line tool, kafka-topics.sh, run inside the Kafka
+// It talks to Kafka through Kafka's own command-line tools, run inside the Kafka
 // container with `docker compose exec`. That only reaches the local Kafka, so this script only
 // reads the local config.
 import { execFileSync } from 'node:child_process';
@@ -10,8 +11,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { partitionCountFrom, readTopics } from './topics.ts';
 
-// Runs kafka-topics.sh with these arguments and returns what it printed.
-function kafkaTopics(args: string[]): string {
+// Runs one of Kafka's command-line tools with these arguments and returns what it printed.
+function runKafkaTool(tool: string, args: string[]): string {
   try {
     return execFileSync(
       'docker',
@@ -20,7 +21,7 @@ function kafkaTopics(args: string[]): string {
         'exec',
         '-T',
         'kafka',
-        '/opt/kafka/bin/kafka-topics.sh',
+        `/opt/kafka/bin/${tool}`,
         '--bootstrap-server',
         '127.0.0.1:9092',
         ...args,
@@ -36,11 +37,17 @@ function kafkaTopics(args: string[]): string {
     );
   } catch {
     throw new Error(
-      `kafka-topics.sh ${args.join(' ')} failed (see above). ` +
+      `${tool} ${args.join(' ')} failed (see above). ` +
         'Is Kafka running? Start it with: docker compose up -d --wait',
     );
   }
 }
+
+function kafkaTopics(args: string[]): string {
+  return runKafkaTool('kafka-topics.sh', args);
+}
+
+const dayMs = 24 * 60 * 60 * 1000;
 
 function createTopics(): void {
   const topics = readTopics(readFileSync(new URL('../config/local.yml', import.meta.url), 'utf8'));
@@ -67,7 +74,19 @@ function createTopics(): void {
           'To change it, wipe the data with: docker compose down -v',
       );
     }
-    console.log(`ok  ${topic.name} (${topic.partitions} partitions): ${topic.purpose}`);
+
+    runKafkaTool('kafka-configs.sh', [
+      '--alter',
+      '--entity-type',
+      'topics',
+      '--entity-name',
+      topic.name,
+      '--add-config',
+      `retention.ms=${topic.retentionDays * dayMs}`,
+    ]);
+    console.log(
+      `ok  ${topic.name} (${topic.partitions} partitions, kept ${topic.retentionDays} days): ${topic.purpose}`,
+    );
   }
 }
 

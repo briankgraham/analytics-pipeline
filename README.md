@@ -25,7 +25,8 @@ docker compose up -d --wait
 ```
 
 Then create the Kafka topics listed in [`config/local.yml`](config/local.yml). Kafka won't create
-topics on its own, so the API and worker need this step:
+topics on its own, so the API and worker need this step. Run it again after pulling a change that adds
+a topic:
 
 ```sh
 pnpm topics
@@ -42,7 +43,8 @@ Stop them with `docker compose down`. Your data is kept. To delete it too, use
 `docker compose down -v`.
 
 To add a topic, add it to every file in `config/` (one per environment; the tests check that they
-list the same topics), then run `pnpm topics` again. Topics that already exist are left alone.
+list the same topics), then run `pnpm topics` again. Topics that already exist keep their messages and
+get the `retentionDays` from the file.
 
 ## Run the API
 
@@ -85,13 +87,48 @@ pnpm worker
 
 It reads logs from Kafka and saves them into the `logs` index in Elasticsearch, creating the index
 the first time. The first time it runs it starts with the oldest log in Kafka, and after that it
-carries on where it stopped, even after Ctrl+C or a crash (after a crash, the last few logs may be
-saved twice). A message in Kafka that isn't a good log
-is skipped with a warning saying where it is. If Elasticsearch is down, the worker keeps retrying
-the same log until it can save it. If Elasticsearch answers 429 ("too many requests"), the worker
-waits a random time, up to a limit that grows with each try, and tries again, as set under
-`elasticsearch.retries` in `config/local.yml`. If those retries run out, it starts on the same log again, so no log is skipped. If they run out while creating the
-index at the start, the worker stops, and you can start it again.
+carries on where it stopped, even after Ctrl+C or a crash. Logs are saved with bulk requests of up to
+`elasticsearch.bulkSize` logs, without waiting to fill a request. A log's id in Elasticsearch comes
+from its position in Kafka, so a log that gets read twice is still stored once. (If you delete a
+Kafka topic by hand but keep the index, positions start over and new logs overwrite old ones.
+`docker compose down -v` wipes both, so it's safe.)
+
+What happens to a log that can't be saved (the settings are in `config/local.yml`):
+
+- **Bad data** (not a valid log): the worker prints a warning saying
+  where it is, why, and up to 1,000 characters of it, then moves on. It isn't stored anywhere else.
+- **Elasticsearch is too busy, down, or refuses a log for any reason:** the worker retries with random, growing waits, resending
+  only the logs that weren't saved (`elasticsearch.retries`). If that doesn't work, it stops reading
+  that partition for `worker.pauseMs`, then tries again. The logs wait safely in Kafka meanwhile. Once
+  a partition has been in trouble for `worker.alertAfterMs`, each pause also prints an `ALERT`.
+- **One log keeps failing while others save** (`worker.moveStuckLogAfterRounds`), or **a log is about
+  to be deleted by Kafka** (`worker.moveToFailedAfterDays`): it moves to the `failed` topic, which
+  keeps logs for longer. Nothing reads that topic yet, and logs there don't show up in searches. To
+  look at them:
+
+  ```sh
+  docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
+    --bootstrap-server 127.0.0.1:9092 --topic failed --from-beginning --timeout-ms 4000
+  ```
+
+The worker can only check for these while it's running. If it's stopped for longer than the `logs`
+topic keeps logs (`retentionDays`), Kafka deletes the oldest logs and nothing warns you. If the retries
+run out while creating the index or checking its fields at the start, the worker stops, and you can start it again.
+
+The worker creates the index when it starts, and refuses to start if an existing index stores our
+fields differently, because it would then refuse good logs. Elasticsearch is set never to create an
+index by itself, so if the index is deleted while the worker runs, the worker pauses and alerts until
+you restart it. Logs that aren't saved yet wait safely in Kafka meanwhile. After pulling a change to
+`docker-compose.yml`, run `docker compose up -d --wait` again to apply it.
+
+Deleting the index also deletes the logs already saved in it, and the worker won't read them again by
+itself, because Kafka remembers they're done. To save again every log Kafka still holds, stop the worker
+and run this, then start the worker. Logs that were saved already are overwritten, not duplicated:
+
+```sh
+docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server 127.0.0.1:9092 \
+  --group worker --topic logs --reset-offsets --to-earliest --execute
+```
 
 To see the logs it saved (a word search on `message`, straight to Elasticsearch):
 

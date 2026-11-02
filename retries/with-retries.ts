@@ -16,8 +16,9 @@ export type RetrySettings = {
 type RetryOptions = RetrySettings & {
   // Says whether an error can pass with time. If not, it's thrown right away, with no waiting.
   shouldRetry: (error: unknown) => boolean;
-  // Called just before each wait, so the caller can say what's happening. `retry` counts from 1.
-  onRetry: (error: unknown, retry: number, waitMs: number) => void;
+  // Called just before each wait, so the caller can say what's happening. `retry` counts from 1. If it
+  // throws, the retries stop and that error is passed on.
+  onRetry: (error: unknown, retry: number, waitMs: number) => void | Promise<void>;
 };
 
 // Takes a function and returns a new one that's called the same way but tries again on failure. When
@@ -36,17 +37,20 @@ export function withRetries<Args extends unknown[], Result>(
         if (retry > maxRetries || !shouldRetry(error)) {
           throw error;
         }
-        const longestWaitMs = exponential ? delayMs * 2 ** (retry - 1) : delayMs;
-        const waitMs = jitter ? Math.floor(Math.random() * longestWaitMs) : longestWaitMs;
-        onRetry(error, retry, waitMs);
+        const fullWaitMs = exponential ? delayMs * 2 ** (retry - 1) : delayMs;
+        const waitMs = jitter ? Math.floor(Math.random() * fullWaitMs) : fullWaitMs;
+        await onRetry(error, retry, waitMs);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
       }
     }
   };
 }
 
-// The longest these settings can spend waiting, when every retry is used. Jitter only ever shortens a
-// wait, so it doesn't change this.
-export function longestTotalWaitMs({ maxRetries, delayMs, exponential }: RetrySettings): number {
-  return exponential ? delayMs * (2 ** maxRetries - 1) : delayMs * maxRetries;
+// The longest single wait these settings can cause, when every retry is used. Jitter only ever
+// shortens a wait, so it doesn't change this.
+export function longestWaitMs({ maxRetries, delayMs, exponential }: RetrySettings): number {
+  if (maxRetries === 0) {
+    return 0;
+  }
+  return exponential ? delayMs * 2 ** (maxRetries - 1) : delayMs;
 }

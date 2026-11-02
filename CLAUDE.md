@@ -7,7 +7,9 @@ building and in what order is in `docs/design.md`.
 ## Rules for every session
 
 1. **Never commit to `main`.** Work on a branch, open a PR, and the user decides when to merge.
-2. **One PR per session, with one commit.** Plan it, build it, review it, commit, open the PR, then stop.
+2. **One PR per session.** Plan it, build it, review it, commit, open the PR, then stop. Aim for one
+   commit, but that's a soft rule. It exists to stop changes sprawling, so extra commits are fine when
+   they belong to the same piece of work.
 3. **Keep each PR small:** about 500 lines at most.
 4. **Write tests alongside the code** for any logic that matters. Plain wiring needs no test. All
    tests live in the top-level `tests/` folder, never next to the code.
@@ -23,6 +25,11 @@ building and in what order is in `docs/design.md`.
 10. **Commit titles follow Conventional Commits** (`feat: ...`, `fix: ...`, `docs: ...`). CI checks this.
 11. **`pnpm verify` must pass** before committing: formatting, type checking, and tests.
 12. **Keep `README.md` accurate** whenever how-to-run steps change.
+13. **Every service is a class** that follows `Service` in `services/service.ts`: `init` for boot-up and
+    `close` for shutdown, both called from `main.ts`. There is exactly one instance, from a static
+    `getInstance` with a private constructor, and calling `init` again never makes a new connection or
+    repeats its work. A service wraps one outside system in a base layer that knows nothing about our
+    data, and more opinionated code builds on top of it.
 
 These rules are kept light on purpose. Stricter checks (coverage targets, linting, git hooks) get
 added back one at a time, and only when the user agrees.
@@ -48,8 +55,9 @@ scripts/          small helper scripts, such as sending a test log
 logs/             what a log is (its shape, and checking one), used by both the API and the worker
 tests/            every test, in folders that match the code folders (tests/api tests the api folder)
 config/           settings for each environment: local (in use), sandbox, stage, prod; read-config.ts has checks the readers share
-kafka/            everything that talks to Kafka: creating topics, sending a log, reading logs
-elasticsearch/    everything that talks to Elasticsearch: creating the index, saving a log
+kafka/            everything that talks to Kafka: creating topics, sending logs, reading logs
+services/         what every service follows: one instance of a class, with init and close
+elasticsearch/    client.ts is the base layer that talks to Elasticsearch; log-storage.ts is the service above it, using logs-index.ts and save-logs.ts
 retries/          trying a failed call again, with waits between tries
 docker-compose.yml  runs Kafka and Elasticsearch locally
 docs/design.md    what we're building, short

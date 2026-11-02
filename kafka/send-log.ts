@@ -1,4 +1,4 @@
-// The only file that talks to Kafka. The rest of the API gets a plain `sendLog` function, so it
+// The only file in the API that talks to Kafka. The rest of the API gets a plain `sendLog` function, so it
 // can be tested without a running Kafka.
 import { Kafka, Partitioners } from 'kafkajs';
 import type { Log } from '../logs/log.ts';
