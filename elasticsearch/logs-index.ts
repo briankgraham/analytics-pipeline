@@ -32,8 +32,9 @@ export function describeWrongFields(fields: ExistingFields): string[] {
 }
 
 // Creates the logs index if it's missing. Throws if Elasticsearch still can't be reached after the
-// retries. An index that already exists is left as it is, but it must store our fields the way we
-// expect. If it doesn't, good logs would be refused, so this throws and the worker doesn't start.
+// retries. An index that already exists keeps its data, but it must store our fields the way we
+// expect. If it doesn't, good logs would be refused, so this throws and the worker doesn't start. An
+// index that already exists is also made strict, so it refuses fields we haven't listed.
 export async function setUpLogsIndex(
   client: ElasticsearchCalls,
   index: string,
@@ -46,6 +47,7 @@ export async function setUpLogsIndex(
     retryOptions,
   );
   const readIndexFields = withRetries(() => client.readIndexFields(index), retryOptions);
+  const makeMappingStrict = withRetries(() => client.makeMappingStrict(index), retryOptions);
 
   if ((await createIndex()) === 'created') {
     return;
@@ -59,4 +61,6 @@ export async function setUpLogsIndex(
         'deletes the logs already saved in it; see README.md for how to save them again from Kafka.',
     );
   }
+
+  await makeMappingStrict();
 }

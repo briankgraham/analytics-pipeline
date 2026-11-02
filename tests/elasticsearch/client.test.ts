@@ -15,6 +15,8 @@ const documents = ['a', 'b', 'c'].map((id) => ({ id, document: { message: `about
 let server: Server;
 let client: ElasticsearchClient;
 let requests: string[];
+// The body of the last request that had one, as JSON.
+let lastBody: unknown;
 // The lines of the last bulk request.
 let bulkLines: unknown[];
 // The next status to answer with. Undefined means 200.
@@ -46,6 +48,7 @@ async function errorFrom(call: Promise<unknown>): Promise<unknown> {
 beforeEach(async () => {
   requests = [];
   bulkLines = [];
+  lastBody = undefined;
   nextStatus = undefined;
   errorType = 'some_error';
   itemAnswers = [];
@@ -56,6 +59,9 @@ beforeEach(async () => {
     request.on('data', (chunk) => (body += chunk));
     request.on('end', () => {
       requests.push(`${request.method} ${request.url}`);
+      if (request.url?.includes('_bulk') === false && body !== '') {
+        lastBody = JSON.parse(body);
+      }
       const isBulk = request.method === 'POST';
       if (behaviour === 'never answer') {
         return;
@@ -174,17 +180,23 @@ describe('saveDocuments', () => {
   });
 
   it.each([
-    [429, 'es_rejected_execution_exception'],
-    [400, 'document_parsing_exception'],
-    [400, 'index_closed_exception'],
-    [404, 'index_not_found_exception'],
-    [503, 'unavailable_shards_exception'],
-  ])('reports a document refused with %i %s, saying why', async (status, type) => {
+    [429, 'es_rejected_execution_exception', false],
+    [400, 'document_parsing_exception', true],
+    [400, 'mapper_parsing_exception', true],
+    [400, 'strict_dynamic_mapping_exception', true],
+    // A 400 that blames the index, not the document, so the log must wait for a person to fix it.
+    [400, 'index_closed_exception', false],
+    [400, 'illegal_argument_exception', false],
+    // The type alone isn't enough: it must be a 400.
+    [503, 'document_parsing_exception', false],
+    [404, 'index_not_found_exception', false],
+    [503, 'unavailable_shards_exception', false],
+  ])('reports a document refused with %i %s, saying why', async (status, type, badRequest) => {
     errorType = type;
     itemAnswers = [201, status, 201];
     await expect(client.saveDocuments('logs', documents)).resolves.toEqual([
       { id: 'a', saved: true },
-      { id: 'b', saved: false, reason: `${status}: no b` },
+      { id: 'b', saved: false, reason: `${status}: no b`, badRequest },
       { id: 'c', saved: true },
     ]);
   });
@@ -253,6 +265,12 @@ describe('createIndex', () => {
   it('answers "created" and sends the fields and replicas', async () => {
     await expect(client.createIndex('logs', fields, 2)).resolves.toBe('created');
     expect(requests).toEqual(['PUT /logs']);
+    expect(lastBody).toMatchObject({ settings: { number_of_replicas: 2 } });
+  });
+
+  it('makes the new index strict, so fields we have not listed are refused', async () => {
+    await client.createIndex('logs', fields, 0);
+    expect(lastBody).toMatchObject({ mappings: { dynamic: 'strict', properties: fields } });
   });
 
   it('answers "already exists" when Elasticsearch says so', async () => {
@@ -268,6 +286,28 @@ describe('createIndex', () => {
       statusCode: 400,
     });
   });
+});
+
+describe('makeMappingStrict', () => {
+  it('asks for strict mappings on the index, and only that', async () => {
+    await client.makeMappingStrict('logs');
+    expect(requests).toEqual(['PUT /logs/_mapping']);
+    expect(lastBody).toEqual({ dynamic: 'strict' });
+  });
+
+  it('throws when Elasticsearch refuses', async () => {
+    nextStatus = 404;
+    await expect(client.makeMappingStrict('logs')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it.each(['never answer', 'answer that never ends'] as const)(
+    'gives up on a server that will %s',
+    async (serverBehaviour) => {
+      behaviour = serverBehaviour;
+      const error = await errorFrom(client.makeMappingStrict('logs'));
+      expect(canPassWithTime(error)).toBe(true);
+    },
+  );
 });
 
 describe('readIndexFields', () => {

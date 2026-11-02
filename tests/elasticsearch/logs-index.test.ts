@@ -17,6 +17,7 @@ const unreachable = () => new errors.ConnectionError('no answer');
 // answered. Once a list is empty, the call succeeds.
 let createAnswers: ('created' | 'already exists' | Error)[];
 let fieldsAnswers: (ExistingFields[] | Error)[];
+let strictAnswers: Error[];
 let client: ElasticsearchCalls;
 
 function nextAnswer<Answer>(answers: (Answer | Error)[], otherwise: Answer): Answer {
@@ -30,10 +31,17 @@ function nextAnswer<Answer>(answers: (Answer | Error)[], otherwise: Answer): Ans
 beforeEach(() => {
   createAnswers = [];
   fieldsAnswers = [];
+  strictAnswers = [];
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   client = {
     createIndex: vi.fn(async () => nextAnswer(createAnswers, 'created' as const)),
     readIndexFields: vi.fn(async () => nextAnswer(fieldsAnswers, [goodFields])),
+    makeMappingStrict: vi.fn(async () => {
+      const error = strictAnswers.shift();
+      if (error !== undefined) {
+        throw error;
+      }
+    }),
     saveDocuments: vi.fn(),
   };
 });
@@ -49,6 +57,27 @@ describe('setUpLogsIndex', () => {
     await setUp();
     expect(client.createIndex).toHaveBeenCalledWith('logs', goodFields, 1);
     expect(client.readIndexFields).not.toHaveBeenCalled();
+    expect(client.makeMappingStrict).not.toHaveBeenCalled();
+  });
+
+  it('makes an existing index strict once its fields are right', async () => {
+    createAnswers = ['already exists'];
+    await setUp();
+    expect(client.makeMappingStrict).toHaveBeenCalledWith('logs');
+  });
+
+  it('does not make an existing index strict when its fields are wrong', async () => {
+    createAnswers = ['already exists'];
+    fieldsAnswers = [[{}]];
+    await expect(setUp()).rejects.toThrow();
+    expect(client.makeMappingStrict).not.toHaveBeenCalled();
+  });
+
+  it('tries again when making the index strict fails in a way that can pass', async () => {
+    createAnswers = ['already exists'];
+    strictAnswers = [unreachable()];
+    await expect(setUp()).resolves.toBeUndefined();
+    expect(client.makeMappingStrict).toHaveBeenCalledTimes(2);
   });
 
   it('accepts an existing index that stores our fields the right way', async () => {

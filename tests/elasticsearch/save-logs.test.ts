@@ -22,11 +22,14 @@ const notAllowed = () => new errors.ConfigurationError('not allowed');
 // document saves.
 let sentIds: string[][];
 let answers: (string[] | Error)[];
+// Documents Elasticsearch always answers 400 for.
+let badIds: string[];
 let saveDocuments: ReturnType<typeof vi.fn<ElasticsearchCalls['saveDocuments']>>;
 
 beforeEach(() => {
   sentIds = [];
   answers = [];
+  badIds = [];
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   saveDocuments = vi.fn(
     async (_index: string, documents: DocumentToSave[]): Promise<DocumentAnswer[]> => {
@@ -35,9 +38,14 @@ beforeEach(() => {
       if (answer instanceof Error) {
         throw answer;
       }
-      return documents.map(({ id }) =>
-        answer.includes(id) ? { id, saved: false, reason: `429: no ${id}` } : { id, saved: true },
-      );
+      return documents.map(({ id }): DocumentAnswer => {
+        if (badIds.includes(id)) {
+          return { id, saved: false, reason: `400: bad ${id}`, badRequest: true };
+        }
+        return answer.includes(id)
+          ? { id, saved: false, reason: `429: no ${id}`, badRequest: false }
+          : { id, saved: true };
+      });
     },
   );
 });
@@ -50,6 +58,7 @@ function saver() {
   const client: ElasticsearchCalls = {
     createIndex: vi.fn(),
     readIndexFields: vi.fn(),
+    makeMappingStrict: vi.fn(),
     saveDocuments,
   };
   return createLogSaver(client, 'logs', retries);
@@ -57,7 +66,11 @@ function saver() {
 
 describe('createLogSaver', () => {
   it('sends every log in one request to the given index, using the given ids', async () => {
-    await expect(saver()(logs, keepAlive)).resolves.toEqual({ savedCount: 3, unsavedLogs: [] });
+    await expect(saver()(logs, keepAlive)).resolves.toEqual({
+      savedCount: 3,
+      unsavedLogs: [],
+      badRequestLogs: [],
+    });
     expect(sentIds).toEqual([['a', 'b', 'c']]);
     expect(saveDocuments.mock.calls[0]?.[0]).toBe('logs');
     expect(saveDocuments.mock.calls[0]?.[1][0]).toEqual({ id: 'a', document: log });
@@ -65,7 +78,11 @@ describe('createLogSaver', () => {
 
   it('retries only the logs that were not saved', async () => {
     answers = [['b']];
-    await expect(saver()(logs, keepAlive)).resolves.toEqual({ savedCount: 3, unsavedLogs: [] });
+    await expect(saver()(logs, keepAlive)).resolves.toEqual({
+      savedCount: 3,
+      unsavedLogs: [],
+      badRequestLogs: [],
+    });
     expect(sentIds).toEqual([['a', 'b', 'c'], ['b']]);
   });
 
@@ -74,13 +91,54 @@ describe('createLogSaver', () => {
     await expect(saver()(logs, keepAlive)).resolves.toEqual({
       savedCount: 2,
       unsavedLogs: [{ id: 'b', reason: '429: no b' }],
+      badRequestLogs: [],
     });
     expect(sentIds).toHaveLength(3);
   });
 
+  it('sets aside a log that gets a 400 after one try, and keeps retrying the others', async () => {
+    badIds = ['a'];
+    answers = [['b']];
+    await expect(saver()(logs, keepAlive)).resolves.toEqual({
+      savedCount: 2,
+      unsavedLogs: [],
+      badRequestLogs: [{ id: 'a', reason: '400: bad a' }],
+    });
+    expect(sentIds).toEqual([['a', 'b', 'c'], ['b']]);
+  });
+
+  it('sets aside a log that is refused with a 429 first and a 400 on the retry', async () => {
+    answers = [['a']];
+    // keepAlive runs just before the wait, so from the second try on, Elasticsearch says 400 for a.
+    const turnBad = async () => {
+      badIds = ['a'];
+    };
+    await expect(saver()(logs, turnBad)).resolves.toEqual({
+      savedCount: 2,
+      unsavedLogs: [],
+      badRequestLogs: [{ id: 'a', reason: '400: bad a' }],
+    });
+    expect(sentIds).toEqual([['a', 'b', 'c'], ['a']]);
+  });
+
+  it('does not wait or retry when the only problem is a 400', async () => {
+    badIds = ['a', 'b', 'c'];
+    const heartbeat = vi.fn(async () => {});
+    const { savedCount, unsavedLogs, badRequestLogs } = await saver()(logs, heartbeat);
+    expect(savedCount).toBe(0);
+    expect(unsavedLogs).toEqual([]);
+    expect(badRequestLogs.map(({ id }) => id)).toEqual(['a', 'b', 'c']);
+    expect(sentIds).toHaveLength(1);
+    expect(heartbeat).not.toHaveBeenCalled();
+  });
+
   it('tries again after a whole request fails in a way that can pass', async () => {
     answers = [unreachable()];
-    await expect(saver()(logs, keepAlive)).resolves.toEqual({ savedCount: 3, unsavedLogs: [] });
+    await expect(saver()(logs, keepAlive)).resolves.toEqual({
+      savedCount: 3,
+      unsavedLogs: [],
+      badRequestLogs: [],
+    });
     expect(sentIds).toHaveLength(2);
   });
 
@@ -96,6 +154,7 @@ describe('createLogSaver', () => {
     await expect(saver()(logs, keepAlive)).resolves.toEqual({
       savedCount: 2,
       unsavedLogs: [{ id: 'b', reason: '429: no b' }],
+      badRequestLogs: [],
     });
   });
 
