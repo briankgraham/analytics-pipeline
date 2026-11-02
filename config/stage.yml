@@ -7,3 +7,8 @@ topics:
   - name: logs
     partitions: 6
     purpose: Logs the API has accepted, waiting for the worker to save them to Elasticsearch.
+    retentionDays: 7
+  - name: failed
+    partitions: 3
+    purpose: Good logs the worker could not save, kept safe for longer than in the logs topic.
+    retentionDays: 30

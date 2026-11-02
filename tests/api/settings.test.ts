@@ -12,6 +12,7 @@ topics:
   - name: logs
     partitions: 3
     purpose: Accepted logs.
+    retentionDays: 7
 `;
 
 describe('readApiSettings', () => {
