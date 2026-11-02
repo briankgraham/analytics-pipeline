@@ -8,6 +8,9 @@ export type RetrySettings = {
   delayMs: number;
   // true doubles the wait after each retry (500, 1000, 2000...). false keeps it the same every time.
   exponential: boolean;
+  // true picks each wait at random, from 0 up to the wait worked out above. Workers that were turned
+  // away at the same moment then come back at different moments, not all together again.
+  jitter: boolean;
 };
 
 type RetryOptions = RetrySettings & {
@@ -23,7 +26,7 @@ export function withRetries<Args extends unknown[], Result>(
   fn: (...args: Args) => Promise<Result>,
   options: RetryOptions,
 ): (...args: Args) => Promise<Result> {
-  const { maxRetries, delayMs, exponential, shouldRetry, onRetry } = options;
+  const { maxRetries, delayMs, exponential, jitter, shouldRetry, onRetry } = options;
 
   return async (...args) => {
     for (let retry = 1; ; retry++) {
@@ -33,7 +36,8 @@ export function withRetries<Args extends unknown[], Result>(
         if (retry > maxRetries || !shouldRetry(error)) {
           throw error;
         }
-        const waitMs = exponential ? delayMs * 2 ** (retry - 1) : delayMs;
+        const longestWaitMs = exponential ? delayMs * 2 ** (retry - 1) : delayMs;
+        const waitMs = jitter ? Math.floor(Math.random() * longestWaitMs) : longestWaitMs;
         onRetry(error, retry, waitMs);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
       }
@@ -41,7 +45,8 @@ export function withRetries<Args extends unknown[], Result>(
   };
 }
 
-// The longest these settings can spend waiting, when every retry is used.
+// The longest these settings can spend waiting, when every retry is used. Jitter only ever shortens a
+// wait, so it doesn't change this.
 export function longestTotalWaitMs({ maxRetries, delayMs, exponential }: RetrySettings): number {
   return exponential ? delayMs * (2 ** maxRetries - 1) : delayMs * maxRetries;
 }

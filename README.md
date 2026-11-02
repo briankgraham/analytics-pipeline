@@ -89,8 +89,8 @@ carries on where it stopped, even after Ctrl+C or a crash (after a crash, the la
 saved twice). A message in Kafka that isn't a good log
 is skipped with a warning saying where it is. If Elasticsearch is down, the worker keeps retrying
 the same log until it can save it. If Elasticsearch answers 429 ("too many requests"), the worker
-waits and tries again, as set under `elasticsearch.retries` in `config/local.yml`. If those retries
-run out, it starts on the same log again, so no log is skipped. If they run out while creating the
+waits a random time, up to a limit that grows with each try, and tries again, as set under
+`elasticsearch.retries` in `config/local.yml`. If those retries run out, it starts on the same log again, so no log is skipped. If they run out while creating the
 index at the start, the worker stops, and you can start it again.
 
 To see the logs it saved (a word search on `message`, straight to Elasticsearch):

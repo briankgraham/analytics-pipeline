@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { longestTotalWaitMs, withRetries } from '../../retries/with-retries.ts';
 
-const settings = { maxRetries: 3, delayMs: 100, exponential: true };
+const settings = { maxRetries: 3, delayMs: 100, exponential: true, jitter: false };
 const retryAnything = { ...settings, shouldRetry: () => true, onRetry: () => {} };
 
 // A function that fails the given number of times, then returns 'done'.
@@ -22,6 +22,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('withRetries', () => {
@@ -52,6 +53,36 @@ describe('withRetries', () => {
     expect(onRetry.mock.calls.map(([, retry, waitMs]) => [retry, waitMs])).toEqual(
       waits.map((waitMs, index) => [index + 1, waitMs]),
     );
+  });
+
+  it.each([
+    ['grows the range when exponential', true, 0.5, [50, 100, 200]],
+    ['keeps the range the same when not exponential', false, 0.5, [50, 50, 50]],
+    ['can wait no time at all', true, 0, [0, 0, 0]],
+    ['stays under the longest wait', true, 0.999, [99, 199, 399]],
+  ])('with jitter, %s', async (_name, exponential, random, waits) => {
+    vi.spyOn(Math, 'random').mockReturnValue(random);
+    const onRetry = vi.fn();
+    const result = withRetries(failing(3), {
+      ...retryAnything,
+      exponential,
+      jitter: true,
+      onRetry,
+    })();
+    await vi.runAllTimersAsync();
+    await expect(result).resolves.toBe('done');
+    expect(onRetry.mock.calls.map(([, , waitMs]) => waitMs)).toEqual(waits);
+  });
+
+  it('with jitter, really waits for the time it picked', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const fn = failing(1);
+    const result = withRetries(fn, { ...retryAnything, jitter: true })();
+    await vi.advanceTimersByTimeAsync(49);
+    expect(fn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fn).toHaveBeenCalledTimes(2);
+    await expect(result).resolves.toBe('done');
   });
 
   it('really waits before trying again', async () => {
@@ -99,5 +130,6 @@ describe('longestTotalWaitMs', () => {
     expect(longestTotalWaitMs(settings)).toBe(100 + 200 + 400);
     expect(longestTotalWaitMs({ ...settings, exponential: false })).toBe(300);
     expect(longestTotalWaitMs({ ...settings, maxRetries: 0 })).toBe(0);
+    expect(longestTotalWaitMs({ ...settings, jitter: true })).toBe(100 + 200 + 400);
   });
 });

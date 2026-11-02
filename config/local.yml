@@ -24,6 +24,8 @@
 #   maxRetries            how many extra tries after the first one.
 #   delayMs               how long to wait before the first retry, in milliseconds.
 #   exponential           true doubles the wait after each retry; false keeps it the same.
+#   jitter                true picks each wait at random, from 0 up to the wait above, so several
+#                         workers don't all come back at the same moment.
 #                         These settings wait 500 + 1000 + 2000 + 4000 + 8000 ms = 15.5 seconds at
 #                         most. The limit is 16 seconds, because Kafka drops a worker that's silent
 #                         for 30. If the retries run out while saving a log, the worker tries that
@@ -48,6 +50,7 @@ elasticsearch:
     maxRetries: 5
     delayMs: 500
     exponential: true
+    jitter: true
 
 worker:
   topic: logs

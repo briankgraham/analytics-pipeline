@@ -20,7 +20,7 @@ export type WorkerSettings = {
 const longestAllowedWaitMs = 16_000;
 
 function readRetrySettings(value: unknown): RetrySettings {
-  const { maxRetries, delayMs, exponential } = (
+  const { maxRetries, delayMs, exponential, jitter } = (
     typeof value === 'object' && value !== null ? value : {}
   ) as Record<string, unknown>;
 
@@ -33,8 +33,11 @@ function readRetrySettings(value: unknown): RetrySettings {
   if (typeof exponential !== 'boolean') {
     throw new Error('elasticsearch.retries.exponential must be true or false');
   }
+  if (typeof jitter !== 'boolean') {
+    throw new Error('elasticsearch.retries.jitter must be true or false');
+  }
 
-  const settings = { maxRetries, delayMs, exponential };
+  const settings = { maxRetries, delayMs, exponential, jitter };
   if (longestTotalWaitMs(settings) > longestAllowedWaitMs) {
     throw new Error(
       `elasticsearch.retries must not wait more than ${longestAllowedWaitMs} ms in one round of retries, or Kafka may drop the worker from its group`,

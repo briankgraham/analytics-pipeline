@@ -9,7 +9,7 @@ import {
 } from '../../elasticsearch/save-log.ts';
 
 const log = { service: 'checkout', level: 'error', message: 'card declined' } as const;
-const retries = { maxRetries: 2, delayMs: 1, exponential: true };
+const retries = { maxRetries: 2, delayMs: 1, exponential: true, jitter: false };
 
 let server: Server;
 let connection: ElasticsearchConnection | undefined;
@@ -17,6 +17,8 @@ let requests: string[];
 // The statuses still to answer, per kind of request. Once a list is empty, the answer is 200.
 let createIndexAnswers: number[];
 let saveLogAnswers: number[];
+// What kind of error a 400 to creating the index says it is.
+let createIndexErrorType: string;
 
 async function connect() {
   const { port } = server.address() as AddressInfo;
@@ -28,6 +30,7 @@ beforeEach(async () => {
   requests = [];
   createIndexAnswers = [];
   saveLogAnswers = [];
+  createIndexErrorType = 'resource_already_exists_exception';
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   server = createServer((request, response) => {
     request.resume();
@@ -40,8 +43,7 @@ beforeEach(async () => {
       'x-elastic-product': 'Elasticsearch',
     });
     // A 400 to creating the index is what Elasticsearch answers when the index is already there.
-    const alreadyExists = request.method === 'PUT' && status === 400;
-    const type = alreadyExists ? 'resource_already_exists_exception' : 'some_error';
+    const type = request.method === 'PUT' && status === 400 ? createIndexErrorType : 'some_error';
     response.end(JSON.stringify(status === 200 ? {} : { error: { type }, status }));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -91,6 +93,13 @@ describe('connectToElasticsearch', () => {
     createIndexAnswers = [429, 400];
     await expect(connect()).resolves.toBeDefined();
     expect(requests).toEqual(['PUT /logs', 'PUT /logs']);
+  });
+
+  it('throws on any other 400 when creating the index', async () => {
+    createIndexAnswers = [400];
+    createIndexErrorType = 'illegal_argument_exception';
+    await expect(connect()).rejects.toMatchObject({ statusCode: 400 });
+    expect(requests).toHaveLength(1);
   });
 
   it('throws when creating the index keeps getting a 429', async () => {
