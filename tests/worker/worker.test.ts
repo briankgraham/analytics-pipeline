@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { KafkaClient } from '../../kafka/client.ts';
 import type { WorkerSettings } from '../../worker/settings.ts';
 import { Worker } from '../../worker/worker.ts';
 
@@ -140,14 +141,37 @@ describe('Worker', () => {
     expect(order).toEqual(['reading stopped', 'kafka closed', 'elasticsearch closed']);
   });
 
-  it('does not start reading when a step before it fails, and closes what opened', async () => {
+  it('closes only what it started', async () => {
     elastic.create.mockRejectedValueOnce(new Error('not allowed'));
     const started = getWorker();
     await expect(started.init()).rejects.toThrow('not allowed');
     expect(consumer.run).not.toHaveBeenCalled();
 
+    const closeKafka = vi.spyOn(KafkaClient.prototype, 'close');
     await started.close();
     expect(elastic.close).toHaveBeenCalledOnce();
+    expect(closeKafka).not.toHaveBeenCalled();
+  });
+
+  it('closes a client that only partly started', async () => {
+    producer.connect.mockRejectedValueOnce(new Error('Kafka is down'));
+    const started = getWorker();
+    await expect(started.init()).rejects.toThrow('Kafka is down');
+
+    await started.close();
+    expect(producer.disconnect).toHaveBeenCalledOnce();
+    expect(elastic.close).toHaveBeenCalledOnce();
+  });
+
+  it('still closes the others when one fails to close, then reports it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const started = getWorker();
+    await started.init();
+    producer.disconnect.mockRejectedValueOnce(new Error('stuck'));
+
+    await expect(started.close()).rejects.toThrow('not everything closed cleanly');
+    expect(elastic.close).toHaveBeenCalledOnce();
+    worker = undefined;
   });
 
   it('does not start reading if it closed during start-up', async () => {

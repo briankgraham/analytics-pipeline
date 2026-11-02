@@ -32,7 +32,8 @@ building and in what order is in `docs/design.md`.
     - A **client** owns the connection to one outside system (`ElasticsearchClient`, `KafkaClient`) and
       knows nothing about our data. Our own logic is plain functions built on top of it.
     - A **program** (`ApiServer`, `Worker`) owns everything it needs and starts it in a fixed order:
-      clients first, then what uses them, and taking in work last. It closes in the opposite order.
+      clients first, then what uses them, and taking in work last. It remembers the services it started
+      and, on close, loops through them newest first and calls each one's own `close`.
 
     `main.ts` only reads the settings and hands the program to `runProgram`
     (`services/run-program.ts`), the one path for starting and for closing on a signal or an error.

@@ -1,7 +1,9 @@
+import { Server } from 'node:http';
 import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiServer } from '../../api/server.ts';
+import { KafkaClient } from '../../kafka/client.ts';
 
 // Stands in for kafkajs, and records the order things happen in. The port is real.
 const { producer, order } = vi.hoisted(() => {
@@ -139,6 +141,40 @@ describe('ApiServer', () => {
     await expect(server.init()).rejects.toThrow('Kafka is down');
     await server.close();
     expect(producer.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('closes nothing it never started', async () => {
+    const closeKafka = vi.spyOn(KafkaClient.prototype, 'close');
+    const server = getServer();
+    await server.close();
+    expect(closeKafka).not.toHaveBeenCalled();
+  });
+
+  it('still closes its clients when the port fails to close', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const server = getServer();
+    await server.init();
+
+    const closePort = Server.prototype.close;
+    vi.spyOn(Server.prototype, 'close').mockImplementationOnce(function (this: Server, done) {
+      closePort.call(this);
+      done?.(new Error('stuck'));
+      return this;
+    });
+
+    await expect(server.close()).rejects.toThrow('not everything closed cleanly');
+    expect(producer.disconnect).toHaveBeenCalledOnce();
+    apiServer = undefined;
+  });
+
+  it('reports a service that fails to close', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const server = getServer();
+    await server.init();
+    producer.disconnect.mockRejectedValueOnce(new Error('stuck'));
+
+    await expect(server.close()).rejects.toThrow('not everything closed cleanly');
+    apiServer = undefined;
   });
 
   it('does not open the port if it closed while connecting', async () => {

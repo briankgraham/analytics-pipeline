@@ -6,7 +6,6 @@ import { isDeepStrictEqual } from 'node:util';
 import type Koa from 'koa';
 import { KafkaClient } from '../kafka/client.ts';
 import { createLogSender } from '../kafka/send-log.ts';
-import { closeInOrder } from '../services/close-in-order.ts';
 import type { Service } from '../services/service.ts';
 import { createApp } from './app.ts';
 import type { ApiSettings } from './settings.ts';
@@ -38,7 +37,8 @@ export class ApiServer implements Service {
   private static instance: ApiServer | undefined;
 
   private readonly settings: ApiSettings;
-  private readonly kafka: KafkaClient;
+  // The services this server has started, oldest first, so close knows what to close.
+  private readonly startedServices: Service[] = [];
   private server: Server | undefined;
   private starting: Promise<void> | undefined;
   private closing: Promise<void> | undefined;
@@ -46,7 +46,6 @@ export class ApiServer implements Service {
 
   private constructor(settings: ApiSettings) {
     this.settings = settings;
-    this.kafka = KafkaClient.getInstance(settings.kafkaBrokers, 'api');
   }
 
   // Returns the one ApiServer. Throws if it's asked for with different settings, because those would
@@ -77,10 +76,11 @@ export class ApiServer implements Service {
   }
 
   private async start(): Promise<void> {
-    const { port, topic } = this.settings;
+    const { port, topic, kafkaBrokers } = this.settings;
 
-    await this.kafka.init();
-    const app = createApp({ sendLog: createLogSender(this.kafka, topic) });
+    const kafka = KafkaClient.getInstance(kafkaBrokers, 'api');
+    await this.startService(kafka);
+    const app = createApp({ sendLog: createLogSender(kafka, topic) });
     if (this.closed) {
       throw new Error(closedMessage);
     }
@@ -103,15 +103,36 @@ export class ApiServer implements Service {
     }
     await this.starting?.catch(() => {});
 
-    const server = this.server;
-    this.server = undefined;
-    await closeInOrder([
-      async () => {
-        if (server !== undefined) {
-          await closePort(server);
-        }
-      },
-      () => this.kafka.close(),
-    ]);
+    let everythingClosed = true;
+    if (this.server !== undefined) {
+      try {
+        await closePort(this.server);
+      } catch (error) {
+        console.error('api: could not close the port:', error);
+        everythingClosed = false;
+      }
+      this.server = undefined;
+    }
+
+    // Newest first. One that fails to close is no reason to leave the others open.
+    for (const service of this.startedServices.toReversed()) {
+      try {
+        await service.close();
+      } catch (error) {
+        console.error('api: could not close a service:', error);
+        everythingClosed = false;
+      }
+    }
+    if (!everythingClosed) {
+      throw new Error('not everything closed cleanly');
+    }
+  }
+
+  // Starts a service, and remembers it first, so one that only partly started still gets closed.
+  private async startService(service: Service): Promise<void> {
+    if (!this.startedServices.includes(service)) {
+      this.startedServices.push(service);
+    }
+    await service.init();
   }
 }

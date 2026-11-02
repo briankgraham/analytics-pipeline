@@ -329,9 +329,11 @@ describe('one instance, with init and close', () => {
 
   it('still closes the connection for sending when reading fails to close', async () => {
     const kafka = await deliver(async () => 'finished');
+    const printed = vi.spyOn(console, 'error').mockImplementation(() => {});
     consumer.disconnect.mockRejectedValueOnce(new Error('stuck'));
     await expect(kafka.close()).rejects.toThrow('stuck');
     expect(producer.disconnect).toHaveBeenCalledOnce();
+    expect(printed).toHaveBeenCalledWith('kafka: could not stop reading:', expect.any(Error));
   });
 
   it('gives a new instance after close', async () => {

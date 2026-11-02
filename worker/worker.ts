@@ -7,7 +7,6 @@ import { setUpLogsIndex } from '../elasticsearch/logs-index.ts';
 import { createLogSaver } from '../elasticsearch/save-logs.ts';
 import { KafkaClient } from '../kafka/client.ts';
 import { createFailedLogSender } from '../kafka/send-failed-logs.ts';
-import { closeInOrder } from '../services/close-in-order.ts';
 import type { StopProgram } from '../services/run-program.ts';
 import type { Service } from '../services/service.ts';
 import { createBatchSaver } from './save-batch.ts';
@@ -20,8 +19,8 @@ export class Worker implements Service {
 
   private readonly settings: WorkerSettings;
   private readonly stopProgram: StopProgram;
-  private readonly elasticsearch: ElasticsearchClient;
-  private readonly kafka: KafkaClient;
+  // The services this worker has started, oldest first, so close knows what to close.
+  private readonly startedServices: Service[] = [];
   private starting: Promise<void> | undefined;
   private closing: Promise<void> | undefined;
   private closed = false;
@@ -29,11 +28,6 @@ export class Worker implements Service {
   private constructor(settings: WorkerSettings, stopProgram: StopProgram) {
     this.settings = settings;
     this.stopProgram = stopProgram;
-    this.elasticsearch = ElasticsearchClient.getInstance(
-      settings.elasticsearchUrl,
-      settings.requestTimeoutMs,
-    );
-    this.kafka = KafkaClient.getInstance(settings.kafkaBrokers, 'worker');
   }
 
   // Returns the one Worker. `stopProgram` is called if reading from Kafka stops for good. Throws if it's
@@ -64,12 +58,17 @@ export class Worker implements Service {
   }
 
   private async start(): Promise<void> {
-    const { settings, elasticsearch, kafka } = this;
+    const { settings } = this;
 
-    await elasticsearch.init();
+    const elasticsearch = ElasticsearchClient.getInstance(
+      settings.elasticsearchUrl,
+      settings.requestTimeoutMs,
+    );
+    await this.startService(elasticsearch);
     await setUpLogsIndex(elasticsearch, settings.index, settings.replicas, settings.retries);
     this.throwIfClosed();
-    await kafka.init();
+    const kafka = KafkaClient.getInstance(settings.kafkaBrokers, 'worker');
+    await this.startService(kafka);
     const sendFailedLogs = await createFailedLogSender(kafka, settings.failedTopic);
     this.throwIfClosed();
 
@@ -109,7 +108,28 @@ export class Worker implements Service {
     }
     await this.starting?.catch(() => {});
 
-    await closeInOrder([() => this.kafka.close(), () => this.elasticsearch.close()]);
+    // Newest first, so Kafka stops handing over logs before Elasticsearch closes. One that fails to close
+    // is no reason to leave the others open.
+    let everythingClosed = true;
+    for (const service of this.startedServices.toReversed()) {
+      try {
+        await service.close();
+      } catch (error) {
+        console.error('worker: could not close a service:', error);
+        everythingClosed = false;
+      }
+    }
+    if (!everythingClosed) {
+      throw new Error('not everything closed cleanly');
+    }
+  }
+
+  // Starts a service, and remembers it first, so one that only partly started still gets closed.
+  private async startService(service: Service): Promise<void> {
+    if (!this.startedServices.includes(service)) {
+      this.startedServices.push(service);
+    }
+    await service.init();
   }
 
   private throwIfClosed(): void {

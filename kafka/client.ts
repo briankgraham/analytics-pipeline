@@ -3,7 +3,6 @@
 // belongs to the files that build on this one.
 import { isDeepStrictEqual } from 'node:util';
 import { Kafka, Partitioners, type Consumer, type Producer } from 'kafkajs';
-import { closeInOrder } from '../services/close-in-order.ts';
 import type { Service } from '../services/service.ts';
 
 export type MessageFromKafka = {
@@ -125,13 +124,17 @@ export class KafkaClient implements Service {
     this.resumeTimers.clear();
     await this.connecting?.catch(() => {});
 
-    await closeInOrder([
-      async () => this.consumer?.disconnect(),
-      async () => {
-        this.ready = false;
-        await this.producer?.disconnect();
-      },
-    ]);
+    try {
+      await this.consumer?.disconnect();
+    } catch (error) {
+      // Printed here because if sending fails to close as well, only that error is passed on.
+      console.error('kafka: could not stop reading:', error);
+      throw error;
+    } finally {
+      // Reading failing to stop is no reason to leave the connection for sending open.
+      this.ready = false;
+      await this.producer?.disconnect();
+    }
   }
 
   // Finishes only after Kafka has stored the messages (kafkajs waits for every copy Kafka keeps to
