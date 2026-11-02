@@ -1,7 +1,7 @@
 // Writes logs the worker can't save to the failed topic, where they're kept safe for longer than in
-// the logs topic. Nothing reads that topic yet.
-import { Kafka, Partitioners } from 'kafkajs';
+// the logs topic. Built on the base layer in client.ts. Nothing reads that topic yet.
 import type { Log } from '../logs/log.ts';
+import type { KafkaCalls } from './client.ts';
 
 export type FailedLog = {
   // The log's position in the logs topic, like logs-2-4711.
@@ -13,11 +13,6 @@ export type FailedLog = {
 // Finishes only after Kafka has stored every log, and throws if it couldn't. After a throw, some may
 // be stored already, so a log can end up in the failed topic twice, but never not at all.
 export type SendFailedLogs = (logs: FailedLog[]) => Promise<void>;
-
-export type FailedLogsConnection = {
-  sendFailedLogs: SendFailedLogs;
-  close: () => Promise<void>;
-};
 
 // Kafka refuses a set of messages for one partition over 1 MB by default. Keeping every send well under
 // that means a big group of logs can always be moved.
@@ -45,41 +40,21 @@ export function splitBySize(messages: string[], mostBytes: number): string[][] {
   return pieces;
 }
 
-export async function connectToFailedTopic(
-  brokers: string[],
+// Returns the function that sends logs to the given topic. Sending only fails once a log needs moving,
+// which could be days from now and is the worst moment to find out the topic is missing. So this
+// checks now, and throws if it isn't there.
+export async function createFailedLogSender(
+  client: KafkaCalls,
   topic: string,
-): Promise<FailedLogsConnection> {
-  const kafka = new Kafka({ clientId: 'worker', brokers });
-
-  // Sending only fails once a log needs moving, which could be days from now and is the worst moment
-  // to find out the topic is missing. So check now, and stop the worker if it isn't there.
-  const admin = kafka.admin();
-  await admin.connect();
-  try {
-    await admin.fetchTopicMetadata({ topics: [topic] });
-  } catch (error) {
-    if ((error as { type?: unknown }).type === 'UNKNOWN_TOPIC_OR_PARTITION') {
-      throw new Error(`the ${topic} topic doesn't exist in Kafka. Have you run \`pnpm topics\`?`, {
-        cause: error,
-      });
-    }
-    throw error;
-  } finally {
-    await admin.disconnect();
+): Promise<SendFailedLogs> {
+  if (!(await client.topicExists(topic))) {
+    throw new Error(`the ${topic} topic doesn't exist in Kafka. Have you run \`pnpm topics\`?`);
   }
 
-  const producer = kafka.producer({
-    createPartitioner: Partitioners.DefaultPartitioner,
-  });
-  await producer.connect();
-
-  return {
-    sendFailedLogs: async (logs) => {
-      const messages = logs.map((failed) => JSON.stringify(failed));
-      for (const piece of splitBySize(messages, mostBytesInOneSend)) {
-        await producer.send({ topic, messages: piece.map((value) => ({ value })) });
-      }
-    },
-    close: () => producer.disconnect(),
+  return async (logs) => {
+    const messages = logs.map((failed) => JSON.stringify(failed));
+    for (const piece of splitBySize(messages, mostBytesInOneSend)) {
+      await client.sendMessages(topic, piece);
+    }
   };
 }
