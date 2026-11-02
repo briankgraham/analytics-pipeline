@@ -9,6 +9,10 @@ elasticsearch:
   url: http://127.0.0.1:9200
   index: logs
   replicas: 0
+  retries:
+    maxRetries: 5
+    delayMs: 500
+    exponential: true
 worker:
   topic: logs
   group: worker
@@ -28,6 +32,7 @@ describe('readWorkerSettings', () => {
       elasticsearchUrl: 'http://127.0.0.1:9200',
       index: 'logs',
       replicas: 0,
+      retries: { maxRetries: 5, delayMs: 500, exponential: true },
     });
   });
 
@@ -78,5 +83,42 @@ describe('readWorkerSettings', () => {
     expect(() => readWorkerSettings(good.replace('replicas: 0', `replicas: ${replicas}`))).toThrow(
       'elasticsearch.replicas',
     );
+  });
+
+  it.each([
+    ['maxRetries: 5', 'maxRetries: -1', 'maxRetries'],
+    ['maxRetries: 5', 'maxRetries: 1.5', 'maxRetries'],
+    ['delayMs: 500', 'delayMs: 0', 'delayMs'],
+    ['delayMs: 500', 'delayMs: soon', 'delayMs'],
+    ['exponential: true', 'exponential: yes', 'exponential'],
+  ])('rejects the retry setting %s changed to %s', (from, to, name) => {
+    expect(() => readWorkerSettings(good.replace(from, to))).toThrow(
+      `elasticsearch.retries.${name}`,
+    );
+  });
+
+  it('rejects retries that are missing', () => {
+    expect(() =>
+      readWorkerSettings(
+        good.replace(
+          '  retries:\n    maxRetries: 5\n    delayMs: 500\n    exponential: true\n',
+          '',
+        ),
+      ),
+    ).toThrow('elasticsearch.retries.maxRetries');
+  });
+
+  it('rejects retries that would wait so long that Kafka thinks the worker is gone', () => {
+    expect(() => readWorkerSettings(good.replace('maxRetries: 5', 'maxRetries: 6'))).toThrow(
+      'must not wait more than',
+    );
+  });
+
+  it('accepts retries that wait exactly the longest allowed time', () => {
+    const text = good
+      .replace('maxRetries: 5', 'maxRetries: 2')
+      .replace('delayMs: 500', 'delayMs: 8000')
+      .replace('exponential: true', 'exponential: false');
+    expect(readWorkerSettings(text).retries.maxRetries).toBe(2);
   });
 });
