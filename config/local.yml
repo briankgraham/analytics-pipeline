@@ -20,6 +20,16 @@
 #                         The worker creates it on start if it's missing.
 # elasticsearch.replicas: how many extra copies of the index Elasticsearch keeps, on other servers.
 #                         Locally there's only one server, so 0; a copy would have nowhere to go.
+# elasticsearch.retries:  what to do when Elasticsearch answers 429 ("too many requests"):
+#   maxRetries            how many extra tries after the first one.
+#   delayMs               how long to wait before the first retry, in milliseconds.
+#   exponential           true doubles the wait after each retry; false keeps it the same.
+#   jitter                true picks each wait at random, from 0 up to the wait above, so several
+#                         workers don't all come back at the same moment.
+#                         These settings wait 500 + 1000 + 2000 + 4000 + 8000 ms = 15.5 seconds at
+#                         most. The limit is 16 seconds, because Kafka drops a worker that's silent
+#                         for 30. If the retries run out while saving a log, the worker tries that
+#                         log again. If they run out while creating the index, the worker stops.
 # worker.topic:           the topic the worker reads logs from. It must be listed under topics.
 # worker.group:           the name the worker reads under. Kafka remembers how far each group has
 #                         read, so a restarted worker carries on where it stopped.
@@ -36,6 +46,11 @@ elasticsearch:
   url: http://127.0.0.1:9200
   index: logs
   replicas: 0
+  retries:
+    maxRetries: 5
+    delayMs: 500
+    exponential: true
+    jitter: true
 
 worker:
   topic: logs

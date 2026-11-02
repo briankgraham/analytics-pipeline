@@ -50,6 +50,7 @@ tests/            every test, in folders that match the code folders (tests/api 
 config/           settings for each environment: local (in use), sandbox, stage, prod; read-config.ts has checks the readers share
 kafka/            everything that talks to Kafka: creating topics, sending a log, reading logs
 elasticsearch/    everything that talks to Elasticsearch: creating the index, saving a log
+retries/          trying a failed call again, with waits between tries
 docker-compose.yml  runs Kafka and Elasticsearch locally
 docs/design.md    what we're building, short
 ```

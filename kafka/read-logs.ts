@@ -38,9 +38,17 @@ export async function readLogsFromKafka(options: ReadOptions): Promise<KafkaRead
   await consumer.connect();
   await consumer.subscribe({ topic, fromBeginning: true });
   await consumer.run({
-    eachMessage: async ({ partition, message }) => {
+    eachMessage: async ({ partition, message, heartbeat }) => {
       const text = message.value === null ? null : message.value.toString('utf8');
-      await handleMessage(text, `${topic} partition ${partition} offset ${message.offset}`);
+      try {
+        await handleMessage(text, `${topic} partition ${partition} offset ${message.offset}`);
+      } catch (error) {
+        // kafkajs tells Kafka the worker is alive only after a message succeeds. Without this, a
+        // message that keeps failing would add up to 30 silent seconds, Kafka would drop the worker
+        // from the group, and the message could end up saved twice.
+        await heartbeat();
+        throw error;
+      }
     },
   });
 

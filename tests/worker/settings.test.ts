@@ -9,6 +9,11 @@ elasticsearch:
   url: http://127.0.0.1:9200
   index: logs
   replicas: 0
+  retries:
+    maxRetries: 5
+    delayMs: 500
+    exponential: true
+    jitter: true
 worker:
   topic: logs
   group: worker
@@ -28,6 +33,7 @@ describe('readWorkerSettings', () => {
       elasticsearchUrl: 'http://127.0.0.1:9200',
       index: 'logs',
       replicas: 0,
+      retries: { maxRetries: 5, delayMs: 500, exponential: true, jitter: true },
     });
   });
 
@@ -78,5 +84,46 @@ describe('readWorkerSettings', () => {
     expect(() => readWorkerSettings(good.replace('replicas: 0', `replicas: ${replicas}`))).toThrow(
       'elasticsearch.replicas',
     );
+  });
+
+  it.each([
+    ['maxRetries: 5', 'maxRetries: -1', 'maxRetries'],
+    ['maxRetries: 5', 'maxRetries: 1.5', 'maxRetries'],
+    ['delayMs: 500', 'delayMs: 0', 'delayMs'],
+    ['delayMs: 500', 'delayMs: soon', 'delayMs'],
+    ['exponential: true', 'exponential: yes', 'exponential'],
+    ['jitter: true', 'jitter: maybe', 'jitter'],
+  ])('rejects the retry setting %s changed to %s', (from, to, name) => {
+    expect(() => readWorkerSettings(good.replace(from, to))).toThrow(
+      `elasticsearch.retries.${name}`,
+    );
+  });
+
+  it('rejects retries that are missing', () => {
+    const noRetries = good.replace(/  retries:\n(    .*\n)+/, '');
+    expect(noRetries).not.toContain('retries');
+    expect(() => readWorkerSettings(noRetries)).toThrow('elasticsearch.retries.maxRetries');
+  });
+
+  it('rejects retries that would wait so long that Kafka thinks the worker is gone', () => {
+    expect(() => readWorkerSettings(good.replace('maxRetries: 5', 'maxRetries: 6'))).toThrow(
+      'must not wait more than',
+    );
+  });
+
+  it('rejects retries that wait just over the longest allowed time', () => {
+    const text = good
+      .replace('maxRetries: 5', 'maxRetries: 1')
+      .replace('delayMs: 500', 'delayMs: 16001')
+      .replace('exponential: true', 'exponential: false');
+    expect(() => readWorkerSettings(text)).toThrow('must not wait more than');
+  });
+
+  it('accepts retries that wait exactly the longest allowed time', () => {
+    const text = good
+      .replace('maxRetries: 5', 'maxRetries: 2')
+      .replace('delayMs: 500', 'delayMs: 8000')
+      .replace('exponential: true', 'exponential: false');
+    expect(readWorkerSettings(text).retries.maxRetries).toBe(2);
   });
 });

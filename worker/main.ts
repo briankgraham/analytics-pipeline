@@ -13,6 +13,7 @@ const elasticsearch = await connectToElasticsearch(
   settings.elasticsearchUrl,
   settings.index,
   settings.replicas,
+  settings.retries,
 );
 const kafka = await readLogsFromKafka({
   brokers: settings.kafkaBrokers,
