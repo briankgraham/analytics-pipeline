@@ -47,6 +47,7 @@ export class ElasticsearchClient implements Service {
   private static instance: ElasticsearchClient | undefined;
 
   private client: Client | undefined;
+  private closing: Promise<void> | undefined;
   private closed = false;
   private readonly url: string;
   private readonly requestTimeoutMs: number;
@@ -85,8 +86,14 @@ export class ElasticsearchClient implements Service {
     });
   }
 
-  // Closes the connection and lets go of the one instance. Calling it again does nothing.
-  async close(): Promise<void> {
+  // Closes the connection and lets go of the one instance. Calling it again gives the same answer, when
+  // the first call finishes.
+  close(): Promise<void> {
+    this.closing ??= this.closeConnection();
+    return this.closing;
+  }
+
+  private async closeConnection(): Promise<void> {
     this.closed = true;
     if (ElasticsearchClient.instance === this) {
       ElasticsearchClient.instance = undefined;

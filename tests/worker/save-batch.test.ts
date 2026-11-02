@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LogToSave, SaveAnswer } from '../../elasticsearch/save-logs.ts';
-import type { MessageBatch } from '../../kafka/read-logs.ts';
+import type { MessageBatch } from '../../kafka/client.ts';
 import type { FailedLog } from '../../kafka/send-failed-logs.ts';
 import { createBatchSaver } from '../../worker/save-batch.ts';
 

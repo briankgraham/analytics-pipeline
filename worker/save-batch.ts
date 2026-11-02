@@ -1,5 +1,5 @@
 import type { LogNotSaved, SaveLogs } from '../elasticsearch/save-logs.ts';
-import type { HandleBatch, MessageBatch, MessageFromKafka } from '../kafka/read-logs.ts';
+import type { HandleBatch, MessageBatch, MessageFromKafka } from '../kafka/client.ts';
 import type { FailedLog, SendFailedLogs } from '../kafka/send-failed-logs.ts';
 import { readLog, type Log } from '../logs/log.ts';
 
@@ -31,7 +31,7 @@ type PartitionTrouble = {
   failedRounds: Map<string, number>;
   // Logs already moved to the failed topic but not marked done, because an unsaved log sits before
   // them. They're read again after the pause, and must not be sent or moved again. Each id is kept
-  // with its timestamp, so a new message that reuses the id (see kafka/read-logs.ts) isn't skipped.
+  // with its timestamp, so a new message that reuses the id (see kafka/client.ts) isn't skipped.
   moved: Map<string, number>;
 };
 
