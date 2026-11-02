@@ -7,7 +7,9 @@ building and in what order is in `docs/design.md`.
 ## Rules for every session
 
 1. **Never commit to `main`.** Work on a branch, open a PR, and the user decides when to merge.
-2. **One PR per session, with one commit.** Plan it, build it, review it, commit, open the PR, then stop.
+2. **One PR per session.** Plan it, build it, review it, commit, open the PR, then stop. Aim for one
+   commit, but that's a soft rule. It exists to stop changes sprawling, so extra commits are fine when
+   they belong to the same piece of work.
 3. **Keep each PR small:** about 500 lines at most.
 4. **Write tests alongside the code** for any logic that matters. Plain wiring needs no test. All
    tests live in the top-level `tests/` folder, never next to the code.
