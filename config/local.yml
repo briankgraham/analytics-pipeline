@@ -23,7 +23,7 @@
 #                         Locally there's only one server, so 0; a copy would have nowhere to go.
 # elasticsearch.bulkSize: the most logs sent to Elasticsearch in one request, at least 2. The worker
 #                         sends what's available without waiting to fill a request.
-# elasticsearch.requestTimeoutMs: how long one bulk request may take before it counts as failed.
+# elasticsearch.requestTimeoutMs: how long one call to Elasticsearch may take before it counts as failed.
 # elasticsearch.retries:  what to do when Elasticsearch is too busy, can't be reached, or refuses a
 #                         log for any reason:
 #   maxRetries            how many extra tries after the first one.

@@ -3,23 +3,29 @@
 import { readFileSync } from 'node:fs';
 import { readWorkerSettings } from './settings.ts';
 import { createBatchSaver } from './save-batch.ts';
-import { connectToElasticsearch } from '../elasticsearch/save-logs.ts';
+import { ElasticsearchClient } from '../elasticsearch/client.ts';
+import { LogStorage } from '../elasticsearch/log-storage.ts';
 import { readLogsFromKafka } from '../kafka/read-logs.ts';
 import { connectToFailedTopic } from '../kafka/send-failed-logs.ts';
 
 const settings = readWorkerSettings(
   readFileSync(new URL('../config/local.yml', import.meta.url), 'utf8'),
 );
-const elasticsearch = await connectToElasticsearch(
+const elasticsearch = ElasticsearchClient.getInstance(
   settings.elasticsearchUrl,
+  settings.requestTimeoutMs,
+);
+const logStorage = LogStorage.getInstance(
+  elasticsearch,
   settings.index,
   settings.replicas,
-  settings.requestTimeoutMs,
   settings.retries,
 );
+await elasticsearch.init();
+await logStorage.init();
 const failedTopic = await connectToFailedTopic(settings.kafkaBrokers, settings.failedTopic);
 const batchSaver = createBatchSaver({
-  saveLogs: elasticsearch.saveLogs,
+  saveLogs: logStorage.saveLogs,
   sendFailedLogs: failedTopic.sendFailedLogs,
   bulkSize: settings.bulkSize,
   moveStuckLogAfterRounds: settings.moveStuckLogAfterRounds,
@@ -50,6 +56,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     kafka
       .close()
       .then(() => failedTopic.close())
+      .then(() => logStorage.close())
       .then(() => elasticsearch.close())
       .catch((error: unknown) => console.error('worker: could not close cleanly:', error));
   });
