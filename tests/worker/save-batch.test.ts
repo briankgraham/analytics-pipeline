@@ -16,19 +16,16 @@ const options = {
 let sentGroups: string[][];
 let failedLogs: FailedLog[];
 let doneOffsets: string[];
-// Says which of the logs in each request stay unsaved, and which are refused as bad.
+// Says which of the logs in each request stay unsaved.
 let unsavedIds: string[];
-let badIds: string[];
 let sendFailedLogs: (logs: FailedLog[]) => Promise<void>;
 let shouldStop: () => boolean;
 
 const saveLogs = async (logs: LogToSave[]): Promise<SaveAnswer> => {
   sentGroups.push(logs.map(({ id }) => id));
   const unsaved = logs.filter(({ id }) => unsavedIds.includes(id));
-  const bad = logs.filter(({ id }) => badIds.includes(id));
   return {
-    savedCount: logs.length - unsaved.length - bad.length,
-    badLogs: bad.map(({ id }) => ({ id, reason: 'wrong shape' })),
+    savedCount: logs.length - unsaved.length,
     unsavedLogs: unsaved.map(({ id }) => ({ id, reason: '429: too busy' })),
   };
 };
@@ -65,7 +62,6 @@ beforeEach(() => {
   failedLogs = [];
   doneOffsets = [];
   unsavedIds = [];
-  badIds = [];
   shouldStop = () => false;
   sendFailedLogs = async (logs) => {
     failedLogs.push(...logs);
@@ -95,7 +91,7 @@ describe('saving a batch', () => {
       sendFailedLogs,
       saveLogs: async (sent) => {
         logs.push(...sent);
-        return { savedCount: sent.length, badLogs: [], unsavedLogs: [] };
+        return { savedCount: sent.length, unsavedLogs: [] };
       },
     });
     await save(batchOf(message(1, JSON.stringify({ ...good, extra: 'ignored' }))));
@@ -131,17 +127,6 @@ describe('bad data', () => {
     await saver()(batchOf(message(1, 'nope')));
     expect(sentGroups).toEqual([]);
     expect(doneOffsets).toEqual(['1']);
-  });
-
-  it('warns about a log Elasticsearch refuses with a 400, and moves on without storing it', async () => {
-    badIds = ['m1'];
-    const answer = await saver()(batchOf(message(1), message(2)));
-    expect(answer).toBe('finished');
-    expect(doneOffsets).toEqual(['2']);
-    expect(failedLogs).toEqual([]);
-    const warning = vi.mocked(console.warn).mock.calls[0]?.[0];
-    expect(warning).toContain('wrong shape');
-    expect(warning).toContain('card declined');
   });
 
   it('prints at most 1,000 characters of a bad message', async () => {

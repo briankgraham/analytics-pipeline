@@ -9,12 +9,12 @@ import { withRetries, type RetrySettings } from '../retries/with-retries.ts';
 export type LogToSave = { id: string; log: Log };
 export type LogNotSaved = { id: string; reason: string };
 
+// Anything Elasticsearch didn't save counts as not saved, whatever the reason. The logs reaching this
+// file have already passed readLog, so a refusal says something is wrong with Elasticsearch or the
+// index, not with the log, and the log must not be thrown away.
 export type SaveAnswer = {
   savedCount: number;
-  // Elasticsearch said the content of these logs is wrong, so trying again won't help.
-  badLogs: LogNotSaved[];
-  // Not saved, for any other reason, and any retries have been used up. Nothing is known to be wrong
-  // with the logs themselves, so they're worth trying again later.
+  // Not saved, and any retries have been used up.
   unsavedLogs: LogNotSaved[];
 };
 
@@ -36,10 +36,6 @@ const logFields = {
   level: { type: 'keyword' },
   message: { type: 'text' },
 } as const;
-
-// The errors that mean a log's own content is wrong. Elasticsearch also answers 400 for problems that
-// have nothing to do with the log, like a closed index, and those logs must not be thrown away.
-const badContentErrors = ['document_parsing_exception', 'mapper_parsing_exception'];
 
 // Thrown inside a round of saving when some logs are left, so that withRetries waits and goes again.
 class LogsStillWaiting extends Error {}
@@ -63,9 +59,24 @@ function warnAboutRetry(error: unknown, retry: number, waitMs: number): void {
   console.warn(`elasticsearch: ${why}, retry ${retry} in ${waitMs} ms`);
 }
 
+// Finds which of our fields an existing index stores differently from logFields, in words. Other
+// fields don't matter, because we never send them.
+export function describeWrongFields(properties: Record<string, { type?: string }>): string[] {
+  return Object.entries(logFields).flatMap(([name, { type }]) => {
+    const actual = properties[name]?.type;
+    if (actual === type) {
+      return [];
+    }
+    const found =
+      actual === undefined ? 'has no type (it is missing, or holds an object)' : `is ${actual}`;
+    return [`${name} ${found}, should be ${type}`];
+  });
+}
+
 // Connects to Elasticsearch, creates the index if it's missing, and returns a function that saves
 // logs into it. Throws if Elasticsearch still can't be reached after the retries. An index that
-// already exists is left as it is.
+// already exists is left as it is, but it must store our fields the way we expect. If it doesn't,
+// good logs would be refused, so this throws and the worker doesn't start.
 export async function connectToElasticsearch(
   url: string,
   index: string,
@@ -77,6 +88,7 @@ export async function connectToElasticsearch(
   // hit a struggling Elasticsearch with no wait at all.
   const client = new Client({ node: url, maxRetries: 0, requestTimeout: requestTimeoutMs });
 
+  const retryOptions = { ...retries, shouldRetry: canPassWithTime, onRetry: warnAboutRetry };
   const createIndex = withRetries(
     () =>
       client.indices.create({
@@ -84,19 +96,35 @@ export async function connectToElasticsearch(
         settings: { number_of_replicas: replicas },
         mappings: { properties: logFields },
       }),
-    { ...retries, shouldRetry: canPassWithTime, onRetry: warnAboutRetry },
+    retryOptions,
   );
+  const readExistingFields = withRetries(() => client.indices.getMapping({ index }), retryOptions);
 
   try {
-    await createIndex();
-  } catch (error) {
-    const alreadyExists =
-      error instanceof errors.ResponseError &&
-      error.body?.error?.type === 'resource_already_exists_exception';
-    if (!alreadyExists) {
-      await client.close();
-      throw error;
+    try {
+      await createIndex();
+    } catch (error) {
+      const alreadyExists =
+        error instanceof errors.ResponseError &&
+        error.body?.error?.type === 'resource_already_exists_exception';
+      if (!alreadyExists) {
+        throw error;
+      }
+      const existing = await readExistingFields();
+      const wrongFields = Object.values(existing).flatMap(({ mappings }) =>
+        describeWrongFields((mappings.properties ?? {}) as Record<string, { type?: string }>),
+      );
+      if (wrongFields.length > 0) {
+        throw new Error(
+          `the "${index}" index stores fields the wrong way (${wrongFields.join('; ')}). ` +
+            "Good logs would be refused, and a field can't be changed in place. Deleting the index also " +
+            'deletes the logs already saved in it; see README.md for how to save them again from Kafka.',
+        );
+      }
     }
+  } catch (error) {
+    await client.close();
+    throw error;
   }
 
   return {
@@ -104,7 +132,6 @@ export async function connectToElasticsearch(
     saveLogs: async (logs, keepAlive) => {
       let waiting = logs;
       let savedCount = 0;
-      const badLogs: LogNotSaved[] = [];
       const reasons = new Map<string, string>();
 
       // Sends every log still waiting, and sorts them by the answer Elasticsearch gave for each one.
@@ -128,10 +155,6 @@ export async function connectToElasticsearch(
             return false;
           }
           const reason = answer?.error?.reason ?? answer?.error?.type ?? `status ${status}`;
-          if (status === 400 && badContentErrors.includes(answer?.error?.type ?? '')) {
-            badLogs.push({ id, reason });
-            return false;
-          }
           reasons.set(id, `${status}: ${reason}`);
           return true;
         });
@@ -164,7 +187,6 @@ export async function connectToElasticsearch(
 
       return {
         savedCount,
-        badLogs,
         unsavedLogs: waiting.map(({ id }) => ({
           id,
           reason: reasons.get(id) ?? requestProblem,

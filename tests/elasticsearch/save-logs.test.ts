@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   connectToElasticsearch,
+  describeWrongFields,
   type ElasticsearchConnection,
 } from '../../elasticsearch/save-logs.ts';
 
@@ -12,6 +13,12 @@ const log = { service: 'checkout', level: 'error', message: 'card declined' } as
 const logs = ['a', 'b', 'c'].map((id) => ({ id, log }));
 const retries = { maxRetries: 2, delayMs: 1, exponential: true, jitter: false };
 const keepAlive = async () => {};
+
+const goodFields = {
+  service: { type: 'keyword' },
+  level: { type: 'keyword' },
+  message: { type: 'text' },
+};
 
 let server: Server;
 let connection: ElasticsearchConnection | undefined;
@@ -23,12 +30,16 @@ let createIndexAnswers: number[];
 let bulkAnswers: number[];
 // For each bulk request that gets a 200, the status of each log in it. Once empty, all are 201.
 let itemAnswers: number[][];
-// What kind of error a log's 400 says it is.
+// What kind of error a refused log's answer says it is.
 let itemErrorType: string;
 // When true, bulk requests never get an answer.
 let neverAnswerBulk: boolean;
 // When true, bulk requests get an answer that starts but never ends, a little at a time.
 let trickleBulk: boolean;
+// What an existing index says about its fields. Undefined means it has none.
+let existingFields: Record<string, { type: string }> | undefined;
+// The statuses still to answer when asked about an index's fields. Once empty, the answer is 200.
+let mappingAnswers: number[];
 // What kind of error a 400 to creating the index says it is.
 let createIndexErrorType: string;
 
@@ -61,8 +72,10 @@ beforeEach(async () => {
   createIndexAnswers = [];
   bulkAnswers = [];
   itemAnswers = [];
-  itemErrorType = 'document_parsing_exception';
+  itemErrorType = 'some_error';
   neverAnswerBulk = false;
+  existingFields = goodFields;
+  mappingAnswers = [];
   trickleBulk = false;
   createIndexErrorType = 'resource_already_exists_exception';
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -71,6 +84,20 @@ beforeEach(async () => {
     request.on('data', (chunk) => (body += chunk));
     request.on('end', () => {
       requests.push(`${request.method} ${request.url}`);
+      if (request.method === 'GET') {
+        const status = mappingAnswers.shift() ?? 200;
+        response.writeHead(status, {
+          'content-type': 'application/json',
+          'x-elastic-product': 'Elasticsearch',
+        });
+        const mappings = existingFields === undefined ? {} : { properties: existingFields };
+        response.end(
+          JSON.stringify(
+            status === 200 ? { logs: { mappings } } : { error: { type: 'x' }, status },
+          ),
+        );
+        return;
+      }
       const isCreateIndex = request.method === 'PUT';
       if (neverAnswerBulk && !isCreateIndex) {
         return;
@@ -124,7 +151,6 @@ describe('saveLogs', () => {
     const { saveLogs } = await connect();
     await expect(saveLogs(logs, keepAlive)).resolves.toEqual({
       savedCount: 3,
-      badLogs: [],
       unsavedLogs: [],
     });
     expect(bulkIds).toEqual([['a', 'b', 'c']]);
@@ -140,31 +166,21 @@ describe('saveLogs', () => {
     expect(bulkIds).toEqual([['a', 'b', 'c'], ['b']]);
   });
 
-  it('does not retry a log whose content is wrong, and says why', async () => {
+  it.each([
+    ['document_parsing_exception', 400],
+    ['index_closed_exception', 400],
+    ['illegal_argument_exception', 400],
+    ['index_not_found_exception', 404],
+  ])('keeps a log refused with %s, because logs reaching here are good', async (type, status) => {
     const { saveLogs } = await connect();
-    itemAnswers = [[400, 201, 201]];
+    itemErrorType = type;
+    itemAnswers = [[status, 201, 201], [status], [status]];
     await expect(saveLogs(logs, keepAlive)).resolves.toEqual({
       savedCount: 2,
-      badLogs: [{ id: 'a', reason: 'no a' }],
-      unsavedLogs: [],
+      unsavedLogs: [{ id: 'a', reason: `${status}: no a` }],
     });
-    expect(bulkIds).toHaveLength(1);
+    expect(bulkIds).toHaveLength(3);
   });
-
-  it.each(['index_closed_exception', 'illegal_argument_exception'])(
-    'keeps a log that gets a 400 of type %s, because the log itself may be fine',
-    async (type) => {
-      const { saveLogs } = await connect();
-      itemErrorType = type;
-      itemAnswers = [[400, 201, 201], [400], [400]];
-      await expect(saveLogs(logs, keepAlive)).resolves.toEqual({
-        savedCount: 2,
-        badLogs: [],
-        unsavedLogs: [{ id: 'a', reason: '400: no a' }],
-      });
-      expect(bulkIds).toHaveLength(3);
-    },
-  );
 
   it('gives up on a request that never gets an answer, and retries it', async () => {
     const { saveLogs } = await connect();
@@ -189,7 +205,6 @@ describe('saveLogs', () => {
       itemAnswers = [[201, status, 201], [status], [status]];
       await expect(saveLogs(logs, keepAlive)).resolves.toEqual({
         savedCount: 2,
-        badLogs: [],
         unsavedLogs: [{ id: 'b', reason: `${status}: no b` }],
       });
       expect(bulkIds).toHaveLength(3);
@@ -216,9 +231,9 @@ describe('saveLogs', () => {
     expect(unsavedLogs[0]?.reason).toContain('some_error');
   });
 
-  it('does not retry a whole-request answer that needs a person, like a 401', async () => {
+  it.each([400, 401])('does not retry a whole-request %i, and keeps every log', async (status) => {
     const { saveLogs } = await connect();
-    bulkAnswers = [401];
+    bulkAnswers = [status];
     const { unsavedLogs } = await saveLogs(logs, keepAlive);
     expect(unsavedLogs).toHaveLength(3);
     expect(requests.filter((request) => request.startsWith('POST'))).toHaveLength(1);
@@ -272,7 +287,46 @@ describe('connectToElasticsearch', () => {
   it('accepts an index that turns out to exist already when it tries again', async () => {
     createIndexAnswers = [429, 400];
     await expect(connect()).resolves.toBeDefined();
-    expect(requests).toEqual(['PUT /logs', 'PUT /logs']);
+    expect(requests).toEqual(['PUT /logs', 'PUT /logs', 'GET /logs/_mapping']);
+  });
+
+  it('does not check the fields of an index it just created', async () => {
+    await connect();
+    expect(requests).toEqual(['PUT /logs']);
+  });
+
+  it('refuses an existing index that stores a field the wrong way, naming it', async () => {
+    createIndexAnswers = [400];
+    existingFields = { ...goodFields, message: { type: 'date' } };
+    await expect(connect()).rejects.toThrow('message is date, should be text');
+  });
+
+  it('refuses an existing index with no fields, naming all of ours', async () => {
+    createIndexAnswers = [400];
+    existingFields = undefined;
+    const refused = connect();
+    await expect(refused).rejects.toThrow('service has no type');
+    await expect(refused).rejects.toThrow('level has no type');
+    await expect(refused).rejects.toThrow('message has no type');
+  });
+
+  it('warns that deleting a wrong index also deletes the saved logs', async () => {
+    createIndexAnswers = [400];
+    existingFields = { ...goodFields, message: { type: 'date' } };
+    await expect(connect()).rejects.toThrow('also deletes the logs already saved');
+  });
+
+  it('tries again when checking the fields gets a 429', async () => {
+    createIndexAnswers = [400];
+    mappingAnswers = [429];
+    await expect(connect()).resolves.toBeDefined();
+    expect(requests).toEqual(['PUT /logs', 'GET /logs/_mapping', 'GET /logs/_mapping']);
+  });
+
+  it('stops when the fields cannot be checked', async () => {
+    createIndexAnswers = [400];
+    mappingAnswers = [404];
+    await expect(connect()).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('throws on any other 400 when creating the index', async () => {
@@ -286,5 +340,19 @@ describe('connectToElasticsearch', () => {
     createIndexAnswers = [429, 429, 429];
     await expect(connect()).rejects.toMatchObject({ statusCode: 429 });
     expect(requests).toHaveLength(3);
+  });
+});
+
+describe('describeWrongFields', () => {
+  it('accepts our fields, and ignores fields we never send', () => {
+    expect(describeWrongFields({ ...goodFields, extra: { type: 'date' } })).toEqual([]);
+  });
+
+  it('names every field that is wrong or missing', () => {
+    const { level: _level, ...noLevel } = goodFields;
+    expect(describeWrongFields({ ...noLevel, service: { type: 'text' } })).toEqual([
+      'service is text, should be keyword',
+      'level has no type (it is missing, or holds an object), should be keyword',
+    ]);
   });
 });

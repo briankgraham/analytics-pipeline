@@ -25,7 +25,7 @@
 #                         sends what's available without waiting to fill a request.
 # elasticsearch.requestTimeoutMs: how long one bulk request may take before it counts as failed.
 # elasticsearch.retries:  what to do when Elasticsearch is too busy, can't be reached, or refuses a
-#                         log for any reason other than its content:
+#                         log for any reason:
 #   maxRetries            how many extra tries after the first one.
 #   delayMs               how long to wait before the first retry, in milliseconds.
 #   exponential           true doubles the wait after each retry; false keeps it the same.
@@ -35,7 +35,7 @@
 #                         Kafka drops a worker that's silent for 30. maxRetries can be at most 20. If
 #                         the retries run out while saving logs, the
 #                         partition pauses (see worker.pauseMs). If they run out while creating the
-#                         index, the worker stops.
+#                         index or checking its fields, the worker stops.
 # worker.topic:           the topic the worker reads logs from. It must be listed under topics.
 # worker.failedTopic:     where good logs go when they can't be saved, as the next two settings say.
 # worker.group:           the name the worker reads under. Kafka remembers how far each group has

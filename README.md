@@ -95,9 +95,9 @@ Kafka topic by hand but keep the index, positions start over and new logs overwr
 
 What happens to a log that can't be saved (the settings are in `config/local.yml`):
 
-- **Bad data** (not a valid log, or Elasticsearch says its content is wrong): the worker prints a warning saying
+- **Bad data** (not a valid log): the worker prints a warning saying
   where it is, why, and up to 1,000 characters of it, then moves on. It isn't stored anywhere else.
-- **Elasticsearch is too busy, down, or refusing logs for any other reason, like a closed index:** the worker retries with random, growing waits, resending
+- **Elasticsearch is too busy, down, or refuses a log for any reason:** the worker retries with random, growing waits, resending
   only the logs that weren't saved (`elasticsearch.retries`). If that doesn't work, it stops reading
   that partition for `worker.pauseMs`, then tries again. The logs wait safely in Kafka meanwhile. Once
   a partition has been in trouble for `worker.alertAfterMs`, each pause also prints an `ALERT`.
@@ -113,7 +113,22 @@ What happens to a log that can't be saved (the settings are in `config/local.yml
 
 The worker can only check for these while it's running. If it's stopped for longer than the `logs`
 topic keeps logs (`retentionDays`), Kafka deletes the oldest logs and nothing warns you. If the retries
-run out while creating the index at the start, the worker stops, and you can start it again.
+run out while creating the index or checking its fields at the start, the worker stops, and you can start it again.
+
+The worker creates the index when it starts, and refuses to start if an existing index stores our
+fields differently, because it would then refuse good logs. Elasticsearch is set never to create an
+index by itself, so if the index is deleted while the worker runs, the worker pauses and alerts until
+you restart it. Logs that aren't saved yet wait safely in Kafka meanwhile. After pulling a change to
+`docker-compose.yml`, run `docker compose up -d --wait` again to apply it.
+
+Deleting the index also deletes the logs already saved in it, and the worker won't read them again by
+itself, because Kafka remembers they're done. To save again every log Kafka still holds, stop the worker
+and run this, then start the worker. Logs that were saved already are overwritten, not duplicated:
+
+```sh
+docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server 127.0.0.1:9092 \
+  --group worker --topic logs --reset-offsets --to-earliest --execute
+```
 
 To see the logs it saved (a word search on `message`, straight to Elasticsearch):
 

@@ -58,6 +58,9 @@ services:
       # Machine-learning features aren't used and take extra memory.
       xpack.ml.enabled: 'false'
       ES_JAVA_OPTS: -Xms1g -Xmx1g
+      # Indexes come only from the worker, which sets up their fields. Otherwise, saving to a missing
+      # index would make Elasticsearch create it and guess the fields, and could then refuse good logs.
+      action.auto_create_index: 'false'
     mem_limit: 2g
     volumes:
       - es-data:/usr/share/elasticsearch/data

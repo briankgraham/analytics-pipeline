@@ -47,7 +47,8 @@ function warnAboutBadMessage(id: string, why: string, text: string | null): void
 }
 
 // Turns a message's text into a log. Returns null, with a warning, if it isn't a good log, because
-// trying again would never work and would hold up every message behind it.
+// trying again would never work and would hold up every message behind it. This is the only place
+// that throws a log away.
 function readMessage({ id, text }: MessageFromKafka): Log | null {
   if (text === null) {
     warnAboutBadMessage(id, 'it is empty', text);
@@ -72,8 +73,7 @@ function readMessage({ id, text }: MessageFromKafka): Log | null {
 
 // Returns the function that handles each batch from Kafka. A batch is saved in groups of up to
 // bulkSize logs, and each log ends up in one of four ways:
-//   - bad data (not a log, or Elasticsearch says its content is wrong): a warning is printed and the
-//     worker moves on
+//   - bad data (not a good log): a warning is printed and the worker moves on
 //   - saved in Elasticsearch
 //   - moved to the failed topic, because it's stuck or about to be deleted from Kafka
 //   - not saved yet: everything before it is marked done, and the partition pauses
@@ -136,11 +136,7 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
     }
 
     const logsToSave = [...messagesById.values()].map(({ id, log }) => ({ id, log }));
-    const { savedCount, badLogs, unsavedLogs } = await saveLogs(logsToSave, batch.keepAlive);
-    for (const { id, reason } of badLogs) {
-      const text = messagesById.get(id)?.text ?? null;
-      warnAboutBadMessage(id, `Elasticsearch refused it (${reason})`, text);
-    }
+    const { savedCount, unsavedLogs } = await saveLogs(logsToSave, batch.keepAlive);
 
     // The count is of rounds in a row, so a log that saved starts again from 0.
     const unsavedIds = new Set(unsavedLogs.map(({ id }) => id));
