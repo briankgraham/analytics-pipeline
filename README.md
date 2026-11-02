@@ -3,8 +3,8 @@
 A small log platform, like a tiny Datadog: apps send logs, and you search them. See
 [`docs/design.md`](docs/design.md) for how it works and what gets built next.
 
-Kafka and Elasticsearch run locally, and the API accepts logs and puts them in Kafka. The worker and
-search come next.
+Kafka and Elasticsearch run locally. The API accepts logs and puts them in Kafka, and the worker
+saves them from Kafka into Elasticsearch. Search comes next.
 
 ## Setup
 
@@ -72,8 +72,29 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server 127.0.0.1:9092 --topic logs --from-beginning --timeout-ms 4000
 ```
 
-On Node 24 the API prints a one-time `TimeoutNegativeWarning` at start-up. It's a harmless bug inside
-kafkajs.
+On Node 24 the API and the worker each print a one-time `TimeoutNegativeWarning` at start-up. It's a
+harmless bug inside kafkajs.
+
+## Run the worker
+
+With the services running and the topics created, in a second terminal:
+
+```sh
+pnpm worker
+```
+
+It reads logs from Kafka and saves them into the `logs` index in Elasticsearch, creating the index
+the first time. The first time it runs it starts with the oldest log in Kafka, and after that it
+carries on where it stopped, even after Ctrl+C or a crash (after a crash, the last few logs may be
+saved twice). A message in Kafka that isn't a good log
+is skipped with a warning saying where it is. If Elasticsearch is down, the worker keeps retrying
+the same log until it can save it.
+
+To see the logs it saved (a word search on `message`, straight to Elasticsearch):
+
+```sh
+curl 'http://127.0.0.1:9200/logs/_search?q=message:card&pretty'
+```
 
 ## Checks
 

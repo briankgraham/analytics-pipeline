@@ -14,6 +14,15 @@
 # kafka.brokers: the addresses programs use to find Kafka (the same one docker-compose.yml publishes).
 # api.port:      the port the API listens on, on this machine only.
 # api.topic:     the topic the API puts accepted logs into. It must be listed under topics.
+#
+# elasticsearch.url:      where Elasticsearch answers (the address docker-compose.yml publishes).
+# elasticsearch.index:    the index (Elasticsearch's word for a table) the worker saves logs into.
+#                         The worker creates it on start if it's missing.
+# elasticsearch.replicas: how many extra copies of the index Elasticsearch keeps, on other servers.
+#                         Locally there's only one server, so 0; a copy would have nowhere to go.
+# worker.topic:           the topic the worker reads logs from. It must be listed under topics.
+# worker.group:           the name the worker reads under. Kafka remembers how far each group has
+#                         read, so a restarted worker carries on where it stopped.
 
 kafka:
   brokers:
@@ -22,6 +31,15 @@ kafka:
 api:
   port: 3000
   topic: logs
+
+elasticsearch:
+  url: http://127.0.0.1:9200
+  index: logs
+  replicas: 0
+
+worker:
+  topic: logs
+  group: worker
 
 topics:
   - name: logs
