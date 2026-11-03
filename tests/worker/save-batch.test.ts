@@ -128,7 +128,9 @@ describe('saving a batch', () => {
     expect(doneOffsets).toEqual(['1']);
     expect(failedLogs.map(({ id }) => id)).toEqual(['m1']);
 
-    expect(await save(batchOf(message(1), message(2)))).toBe('pause');
+    // Kafka hands over the same messages again, so the same batch is used. Building new messages
+    // would stamp them with a new Date.now(), and a changed timestamp means a different message.
+    expect(await save(batch)).toBe('pause');
     expect(failedLogs.map(({ id }) => id)).toEqual(['m1']);
     expect(sentGroups.at(-1)).toEqual(['m2']);
   });
