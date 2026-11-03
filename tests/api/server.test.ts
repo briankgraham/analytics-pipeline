@@ -3,6 +3,7 @@ import { createServer } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiServer } from '../../api/server.ts';
+import { ElasticsearchClient } from '../../elasticsearch/client.ts';
 import { KafkaClient } from '../../kafka/client.ts';
 
 // Stands in for kafkajs, and records the order things happen in. The port is real.
@@ -41,8 +42,19 @@ async function freePort(): Promise<number> {
 let port: number;
 let apiServer: ApiServer | undefined;
 
+function settings() {
+  return {
+    port,
+    kafkaBrokers: ['b:9092'],
+    topic: 'logs',
+    elasticsearchUrl: 'http://127.0.0.1:1',
+    index: 'logs',
+    requestTimeoutMs: 200,
+  };
+}
+
 function getServer() {
-  apiServer = ApiServer.getInstance({ port, kafkaBrokers: ['b:9092'], topic: 'logs' });
+  apiServer = ApiServer.getInstance(settings());
   return apiServer;
 }
 
@@ -75,9 +87,9 @@ describe('ApiServer', () => {
 
   it('has only one instance, and refuses different settings', () => {
     expect(getServer()).toBe(getServer());
-    expect(() =>
-      ApiServer.getInstance({ port: port + 1, kafkaBrokers: ['b:9092'], topic: 'logs' }),
-    ).toThrow('different settings');
+    expect(() => ApiServer.getInstance({ ...settings(), port: port + 1 })).toThrow(
+      'different settings',
+    );
   });
 
   it('connects its clients before it opens the port, then answers requests', async () => {
@@ -93,6 +105,38 @@ describe('ApiServer', () => {
       topic: 'logs',
       messages: [{ value: JSON.stringify(good) }],
     });
+  });
+
+  it('answers searches from the index in its settings', async () => {
+    const searchDocuments = vi
+      .spyOn(ElasticsearchClient.prototype, 'searchDocuments')
+      .mockResolvedValue([good]);
+    await getServer().init();
+
+    const reply = await fetch(`http://127.0.0.1:${port}/v1/search?q=card`);
+    expect(await reply.json()).toEqual({ logs: [good] });
+    expect(searchDocuments.mock.calls[0]?.[0]).toBe('logs');
+  });
+
+  it('replies 503 to a search while Elasticsearch cannot be reached', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await getServer().init();
+    const reply = await fetch(`http://127.0.0.1:${port}/v1/search?q=card`);
+    expect(reply.status).toBe(503);
+  });
+
+  it('closes Elasticsearch before Kafka, the newest first', async () => {
+    const closeElasticsearch = ElasticsearchClient.prototype.close;
+    vi.spyOn(ElasticsearchClient.prototype, 'close').mockImplementation(function (
+      this: ElasticsearchClient,
+    ) {
+      order.push('elasticsearch closed');
+      return closeElasticsearch.call(this);
+    });
+    const server = getServer();
+    await server.init();
+    await server.close();
+    expect(order).toEqual(['kafka opened', 'elasticsearch closed', 'kafka closed']);
   });
 
   it('starts once however many times init is called, even at the same time', async () => {

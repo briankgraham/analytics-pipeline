@@ -1,6 +1,7 @@
 import Router from '@koa/router';
 import type { Dependencies } from '../dependencies.ts';
 import { messageRoute } from './v1/message.ts';
+import { searchRoute } from './v1/search.ts';
 
 // Every route the API has, grouped by version. Each route lives in its own file in the folder of
 // its version; a new one is added to that version's list. A request to any other URL gets 404, and
@@ -8,7 +9,7 @@ import { messageRoute } from './v1/message.ts';
 //
 // To change something in a way that would break existing senders, add a v2 folder and list instead
 // of editing v1, so old senders keep working.
-const v1Routes = [messageRoute];
+const v1Routes = [messageRoute, searchRoute];
 
 export function allRoutes(deps: Dependencies): Router {
   const router = new Router();

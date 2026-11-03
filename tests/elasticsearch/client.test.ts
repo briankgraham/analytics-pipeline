@@ -27,6 +27,8 @@ let errorType: string;
 let itemAnswers: number[];
 // What the stand-in answers about an index's mappings.
 let mappingAnswer: unknown;
+// What the stand-in answers to a search.
+let searchAnswer: unknown;
 let behaviour: 'answer' | 'never answer' | 'answer that never ends';
 
 // The client refuses to talk to a server that doesn't send this header.
@@ -53,6 +55,7 @@ beforeEach(async () => {
   errorType = 'some_error';
   itemAnswers = [];
   mappingAnswer = { logs: { mappings: { properties: fields } } };
+  searchAnswer = { hits: { hits: [] } };
   behaviour = 'answer';
   server = createServer((request, response) => {
     let body = '';
@@ -79,6 +82,8 @@ beforeEach(async () => {
         response.end(JSON.stringify({ error: { type: errorType }, status }));
       } else if (request.method === 'GET') {
         response.end(JSON.stringify(mappingAnswer));
+      } else if (request.url?.includes('_search')) {
+        response.end(JSON.stringify(searchAnswer));
       } else if (isBulk) {
         bulkLines = body
           .trim()
@@ -324,5 +329,44 @@ describe('readIndexFields', () => {
   it('throws when the index is not there', async () => {
     nextStatus = 404;
     await expect(client.readIndexFields('logs')).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('searchDocuments', () => {
+  const search = { query: { match_all: {} }, size: 5 };
+
+  it('sends the search and answers with the documents, in the order found', async () => {
+    const first = { message: 'about a' };
+    const second = { message: 'about b' };
+    searchAnswer = { hits: { hits: [{ _source: first }, { _source: second }] } };
+    await expect(client.searchDocuments('logs', search)).resolves.toEqual([first, second]);
+    expect(lastBody).toEqual(search);
+  });
+
+  it('refuses an answer that only covers part of the index', async () => {
+    await client.searchDocuments('logs', search);
+    expect(requests).toEqual(['POST /logs/_search?allow_partial_search_results=false']);
+  });
+
+  it('answers with no documents when the index does not exist yet', async () => {
+    nextStatus = 404;
+    errorType = 'index_not_found_exception';
+    await expect(client.searchDocuments('logs', search)).resolves.toEqual([]);
+  });
+
+  it('throws for any other problem, such as a closed index', async () => {
+    nextStatus = 400;
+    errorType = 'index_closed_exception';
+    await expect(client.searchDocuments('logs', search)).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('counts being too busy as something that can pass with time', async () => {
+    nextStatus = 429;
+    expect(canPassWithTime(await errorFrom(client.searchDocuments('logs', search)))).toBe(true);
+  });
+
+  it('gives up on a server that never answers', async () => {
+    behaviour = 'never answer';
+    expect(canPassWithTime(await errorFrom(client.searchDocuments('logs', search)))).toBe(true);
   });
 });

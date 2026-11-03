@@ -65,8 +65,8 @@ One small PR at a time:
    index is strict, so an unlisted field counts) is sent once and goes straight to the `failed` topic.
    A good log that still fails after the retries while other logs in its request save, or that is
    about to be deleted by Kafka, moves there too. That topic keeps logs for longer.
-5. **Search:** `GET /search?q=word` in the API, plus a script that sends a test log. This is the first
-   full demo.
+5. **Search:** `GET /v1/search?q=word` in the API, plus a script that sends a test log. This is the
+   first full demo.
 
 ## Later, planned once the first goal works
 

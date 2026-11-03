@@ -1,5 +1,10 @@
 import { parse } from 'yaml';
-import { readKafkaBrokers, section } from '../config/read-config.ts';
+import {
+  readElasticsearchConnection,
+  readKafkaBrokers,
+  readWholeNumber,
+  section,
+} from '../config/read-config.ts';
 import { readTopics } from '../kafka/topics.ts';
 import { longestWaitMs, type RetrySettings } from '../retries/with-retries.ts';
 
@@ -30,14 +35,6 @@ const longestAllowedSilenceMs = 27_000;
 const mostRetries = 20;
 
 const dayMs = 24 * 60 * 60 * 1000;
-
-// Returns a setting that must be a whole number of at least 1, or throws naming the setting.
-function readWholeNumber(value: unknown, name: string): number {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-    throw new Error(`${name} must be a whole number of at least 1`);
-  }
-  return value;
-}
 
 function readRetrySettings(value: unknown, requestTimeoutMs: number): RetrySettings {
   const { maxRetries, delayMs, exponential, jitter } = (
@@ -76,10 +73,7 @@ export function readWorkerSettings(yamlText: string): WorkerSettings {
   const kafkaBrokers = readKafkaBrokers(file);
   const worker = section(file, 'worker');
   const { topic, failedTopic, group } = worker;
-  const { url, index, replicas, bulkSize, requestTimeoutMs, retries } = section(
-    file,
-    'elasticsearch',
-  );
+  const { replicas, bulkSize, retries } = section(file, 'elasticsearch');
 
   // A topic that isn't listed under "topics" doesn't exist in Kafka, so catch the typo here.
   const topics = readTopics(yamlText);
@@ -107,16 +101,7 @@ export function readWorkerSettings(yamlText: string): WorkerSettings {
   if (typeof group !== 'string' || group.trim() === '') {
     throw new Error('worker.group must be a name, like worker');
   }
-  if (typeof url !== 'string' || !/^https?:\/\/./.test(url) || !URL.canParse(url)) {
-    throw new Error('elasticsearch.url must be an address like http://127.0.0.1:9200');
-  }
-  // Elasticsearch's rules for index names, kept simple: lowercase letters, digits, '.', '_' and
-  // '-', starting with a letter or digit, at most 255 characters.
-  if (typeof index !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,254}$/.test(index)) {
-    throw new Error(
-      "elasticsearch.index must be lowercase letters, digits, '.', '_' or '-', starting with a letter or digit",
-    );
-  }
+  const connection = readElasticsearchConnection(file);
   if (typeof replicas !== 'number' || !Number.isInteger(replicas) || replicas < 0) {
     throw new Error('elasticsearch.replicas must be a whole number of at least 0');
   }
@@ -126,7 +111,6 @@ export function readWorkerSettings(yamlText: string): WorkerSettings {
   if (groupSize < 2) {
     throw new Error('elasticsearch.bulkSize must be at least 2');
   }
-  const timeoutMs = readWholeNumber(requestTimeoutMs, 'elasticsearch.requestTimeoutMs');
 
   return {
     kafkaBrokers,
@@ -140,11 +124,9 @@ export function readWorkerSettings(yamlText: string): WorkerSettings {
     ),
     moveToFailedAfterMs: moveAfterDays * dayMs,
     alertAfterMs: readWholeNumber(worker.alertAfterMs, 'worker.alertAfterMs'),
-    elasticsearchUrl: url,
-    index,
+    ...connection,
     replicas,
     bulkSize: groupSize,
-    requestTimeoutMs: timeoutMs,
-    retries: readRetrySettings(retries, timeoutMs),
+    retries: readRetrySettings(retries, connection.requestTimeoutMs),
   };
 }

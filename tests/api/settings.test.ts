@@ -8,6 +8,10 @@ kafka:
 api:
   port: 3000
   topic: logs
+elasticsearch:
+  url: http://127.0.0.1:9200
+  index: logs
+  requestTimeoutMs: 10000
 topics:
   - name: logs
     partitions: 3
@@ -22,6 +26,9 @@ describe('readApiSettings', () => {
       port: 3000,
       kafkaBrokers: ['127.0.0.1:9092'],
       topic: 'logs',
+      elasticsearchUrl: 'http://127.0.0.1:9200',
+      index: 'logs',
+      requestTimeoutMs: 10000,
     });
   });
 
@@ -41,6 +48,18 @@ describe('readApiSettings', () => {
 
   it.each(['0', '70000', '3000.5', 'abc'])('rejects the port %s', (port) => {
     expect(() => readApiSettings(good.replace('port: 3000', `port: ${port}`))).toThrow('api.port');
+  });
+
+  it('rejects wrong Elasticsearch settings', () => {
+    expect(() => readApiSettings(good.replace('http://127.0.0.1:9200', 'nowhere'))).toThrow(
+      'elasticsearch.url',
+    );
+    expect(() => readApiSettings(good.replace('index: logs', 'index: Logs'))).toThrow(
+      'elasticsearch.index',
+    );
+    expect(() => readApiSettings(good.replace('10000', '0'))).toThrow(
+      'elasticsearch.requestTimeoutMs',
+    );
   });
 
   it('rejects a topic that is not listed under topics', () => {

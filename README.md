@@ -4,7 +4,7 @@ A small log platform, like a tiny Datadog: apps send logs, and you search them. 
 [`docs/design.md`](docs/design.md) for how it works and what gets built next.
 
 Kafka and Elasticsearch run locally. The API accepts logs and puts them in Kafka, and the worker
-saves them from Kafka into Elasticsearch. Search comes next.
+saves them from Kafka into Elasticsearch, and the API searches them there.
 
 ## Setup
 
@@ -140,11 +140,31 @@ docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-se
   --group worker --topic logs --reset-offsets --to-earliest --execute
 ```
 
-To see the logs it saved (a word search on `message`, straight to Elasticsearch):
+## Search
+
+With the API and the worker running, send a test log, then search for it. A saved log shows up in
+searches within about a second:
 
 ```sh
-curl 'http://127.0.0.1:9200/logs/_search?q=message:card&pretty'
+pnpm send-test-log
+curl 'http://127.0.0.1:3000/v1/search?q=card'
 ```
+
+Search by any of these, together or alone. A log must match all of them:
+
+| Value     | Finds logs where                                  |
+| --------- | ------------------------------------------------- |
+| `q`       | `message` holds every word given, in any order    |
+| `service` | `service` is exactly this                         |
+| `level`   | `level` is exactly this: debug, info, warn, error |
+
+For example, `curl 'http://127.0.0.1:3000/v1/search?q=card%20declined&level=error'`.
+
+`200` answers with `{"logs": [...]}`, at most 50, and an empty list if nothing matches or the worker
+hasn't created the index yet. A search with `q` puts the best match first. Without `q` every log matches
+equally, so if more than 50 match you get any 50. Logs have no time yet, so they can't be sorted newest
+first. `400` means the search is wrong (the reply says why). `503` means Elasticsearch is too busy or
+can't be reached, so try again. `500` means something needs a person, such as a closed index.
 
 ## Checks
 

@@ -179,6 +179,31 @@ export class ElasticsearchClient implements Service {
     });
   }
 
+  // Runs one search and answers with the documents found, in the order Elasticsearch ranks them. An index that doesn't exist
+  // yet has no documents to find, so it answers with none. Throws for any other problem. If part of the
+  // index can't answer, Elasticsearch would normally answer with only some of the matches and still say
+  // 200. allow_partial_search_results turns that into a failure, so an answer is never quietly incomplete.
+  async searchDocuments(
+    index: string,
+    { query, size }: { query: object; size: number },
+  ): Promise<unknown[]> {
+    try {
+      const { hits } = await this.started().search(
+        { index, query, size, allow_partial_search_results: false },
+        this.withTimeLimit(),
+      );
+      return hits.hits.map((hit) => hit._source);
+    } catch (error) {
+      const indexIsMissing =
+        error instanceof errors.ResponseError &&
+        error.body?.error?.type === 'index_not_found_exception';
+      if (indexIsMissing) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
   private started(): Client {
     if (this.closed) {
       throw new Error(closedMessage);
@@ -196,7 +221,7 @@ export class ElasticsearchClient implements Service {
   }
 }
 
-// The calls the files above this one use, so their tests can stand in for Elasticsearch.
+// The calls the worker's files use, so their tests can stand in for Elasticsearch.
 export type ElasticsearchCalls = Pick<
   ElasticsearchClient,
   'createIndex' | 'readIndexFields' | 'makeMappingStrict' | 'saveDocuments'
