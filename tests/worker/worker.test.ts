@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { KafkaClient } from '../../kafka/client.ts';
 import type { WorkerSettings } from '../../worker/settings.ts';
 import { Worker } from '../../worker/worker.ts';
+import { workerName } from '../../worker/worker-name.ts';
 
 // Stands in for both libraries, and records the order things happen in.
 const { order, admin, consumer, producer, elastic } = vi.hoisted(() => {
@@ -30,6 +31,20 @@ const { order, admin, consumer, producer, elastic } = vi.hoisted(() => {
       close: vi.fn(note('elasticsearch closed')),
       create: vi.fn(note('index set up')),
     },
+  };
+});
+
+// The real batch saver, except that its keepOnlyPartitions is recorded.
+const { keepOnlyPartitions } = vi.hoisted(() => ({ keepOnlyPartitions: vi.fn() }));
+
+vi.mock('../../worker/save-batch.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../worker/save-batch.ts')>();
+  return {
+    ...original,
+    createBatchSaver: (...args: Parameters<typeof original.createBatchSaver>) => ({
+      ...original.createBatchSaver(...args),
+      keepOnlyPartitions,
+    }),
   };
 });
 
@@ -197,6 +212,41 @@ describe('Worker', () => {
     const error = new Error('gave up');
     onCrash({ payload: { restart: false, error } });
     expect(stopProgram).toHaveBeenCalledWith(error);
+  });
+
+  describe('when Kafka shares out the partitions', () => {
+    async function shareOut(partitions: number[]) {
+      await getWorker().init();
+      const [, onJoin] = consumer.on.mock.calls.find(([event]) => event === 'group-join') ?? [];
+      vi.mocked(console.log).mockClear();
+      onJoin({ payload: { memberAssignment: { logs: partitions } } });
+    }
+
+    it('prints the partitions this worker now reads, in order', async () => {
+      await shareOut([2, 0]);
+      expect(console.log).toHaveBeenCalledWith(
+        `${workerName}: now reading these partitions of "logs": 0, 2`,
+      );
+    });
+
+    it('tells the batch saver, so it forgets the trouble of partitions that left', async () => {
+      await shareOut([2, 0]);
+      expect(keepOnlyPartitions).toHaveBeenCalledWith([2, 0]);
+    });
+
+    it('says so when this worker is left with none', async () => {
+      await shareOut([]);
+      expect(console.log).toHaveBeenCalledWith(
+        `${workerName}: no partitions of "logs" to read, waiting as a spare`,
+      );
+    });
+  });
+
+  it('gives Kafka its own name, so Kafka can tell workers apart', async () => {
+    const getInstance = vi.spyOn(KafkaClient, 'getInstance');
+    await getWorker().init();
+    expect(getInstance).toHaveBeenCalledWith(settings.kafkaBrokers, workerName);
+    expect(workerName).toBe(`worker-${process.pid}`);
   });
 
   it('refuses to start after close, and gives a new instance', async () => {

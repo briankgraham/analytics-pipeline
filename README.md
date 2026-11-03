@@ -140,6 +140,17 @@ docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-se
   --group worker --topic logs --reset-offsets --to-earliest --execute
 ```
 
+Each worker names itself with its process id, like `worker-12345`, in the lines it prints about its
+own work, and says which partitions it reads each time Kafka shares them out. Lines that start with
+`elasticsearch:` or `kafka:` come from the clients and don't name a worker. Run `pnpm worker` in another
+terminal to see the partitions split between the two. To see which worker reads what, and how many logs
+each partition still has to read (`LAG`):
+
+```sh
+docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server 127.0.0.1:9092 \
+  --group worker --describe
+```
+
 ## Search
 
 With the API and the worker running, send a test log, then search for it. A saved log shows up in
