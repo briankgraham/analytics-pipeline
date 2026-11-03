@@ -20,8 +20,7 @@ worker:
   topic: logs
   failedTopic: failed
   group: worker
-  pauseMs: 120000
-  moveStuckLogAfterRounds: 10
+  waitBeforeTryingAgainMs: 120000
   moveToFailedAfterDays: 6
   alertAfterMs: 600000
 topics:
@@ -41,10 +40,10 @@ describe('readWorkerSettings', () => {
     expect(readWorkerSettings(text)).toEqual({
       kafkaBrokers: ['127.0.0.1:9092'],
       topic: 'logs',
+      topicPartitions: 3,
       failedTopic: 'failed',
       group: 'worker',
-      pauseMs: 120_000,
-      moveStuckLogAfterRounds: 10,
+      waitBeforeTryingAgainMs: 5_000,
       moveToFailedAfterMs: 6 * 24 * 60 * 60 * 1000,
       alertAfterMs: 600_000,
       elasticsearchUrl: 'http://127.0.0.1:9200',
@@ -149,12 +148,6 @@ describe('readWorkerSettings', () => {
     );
   });
 
-  it('rejects a pause too long for a timer', () => {
-    expect(() =>
-      readWorkerSettings(good.replace('pauseMs: 120000', 'pauseMs: 2147483648')),
-    ).toThrow('worker.pauseMs must be at most');
-  });
-
   it('accepts a bigger bulk size', () => {
     const text = good.replace('bulkSize: 500', 'bulkSize: 1000');
     expect(readWorkerSettings(text).bulkSize).toBe(1000);
@@ -163,8 +156,7 @@ describe('readWorkerSettings', () => {
   it.each([
     ['bulkSize: 500', 'elasticsearch.bulkSize'],
     ['requestTimeoutMs: 10000', 'elasticsearch.requestTimeoutMs'],
-    ['pauseMs: 120000', 'worker.pauseMs'],
-    ['moveStuckLogAfterRounds: 10', 'worker.moveStuckLogAfterRounds'],
+    ['waitBeforeTryingAgainMs: 120000', 'worker.waitBeforeTryingAgainMs'],
     ['moveToFailedAfterDays: 6', 'worker.moveToFailedAfterDays'],
     ['alertAfterMs: 600000', 'worker.alertAfterMs'],
   ])('rejects bad values for %s', (setting, name) => {

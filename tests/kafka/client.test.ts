@@ -38,8 +38,6 @@ vi.mock('kafkajs', () => ({
   },
 }));
 
-const resume = vi.fn();
-const pause = vi.fn(() => resume);
 const resolveOffset = vi.fn();
 const heartbeat = vi.fn(async () => {});
 const isRunning = vi.fn(() => true);
@@ -55,14 +53,14 @@ function getClient() {
 }
 
 // Starts reading with the given handler, then delivers one batch the way kafkajs would.
-async function deliver(handleBatch: HandleBatch) {
+async function deliver(handleBatch: HandleBatch, pause = vi.fn()) {
   const kafka = getClient();
   await kafka.init();
   await kafka.startReading({
     topic: 'logs',
     group: 'worker',
-    pauseMs: 120_000,
     handleBatch,
+    partitionsAtOnce: 3,
     onPartitionsAssigned,
     onGiveUp,
   });
@@ -102,13 +100,13 @@ afterEach(async () => {
 
 describe('reading', () => {
   it('leaves marking messages done to the handler', async () => {
-    await deliver(async () => 'finished');
+    await deliver(async () => {});
     expect(consumer.run.mock.calls[0]?.[0].eachBatchAutoResolve).toBe(false);
     expect(resolveOffset).not.toHaveBeenCalled();
   });
 
   it('hands over the messages in plain form', async () => {
-    const handleBatch = vi.fn<HandleBatch>(async () => 'finished');
+    const handleBatch = vi.fn<HandleBatch>(async () => {});
     await deliver(handleBatch);
     const batch = handleBatch.mock.calls[0]?.[0];
     expect(batch?.partition).toBe(2);
@@ -122,7 +120,6 @@ describe('reading', () => {
     await deliver(async (batch) => {
       batch.markDone('7');
       await batch.keepAlive();
-      return 'finished';
     });
     expect(resolveOffset).toHaveBeenCalledWith('7');
     expect(heartbeat).toHaveBeenCalledOnce();
@@ -137,44 +134,24 @@ describe('reading', () => {
     isStale.mockReturnValue(stale);
     await deliver(async (batch) => {
       expect(batch.shouldStop()).toBe(stop);
-      return 'finished';
     });
   });
 
-  it('does not pause after a batch that finished', async () => {
-    await deliver(async () => 'finished');
+  it('never pauses a partition, and leaves messages the handler did not mark done to be handed over again', async () => {
+    const pause = vi.fn();
+    await deliver(async () => {}, pause);
     expect(pause).not.toHaveBeenCalled();
-  });
-
-  it('pauses the partition when asked, and resumes after pauseMs', async () => {
-    await deliver(async () => 'pause');
-    expect(pause).toHaveBeenCalledOnce();
-
-    vi.advanceTimersByTime(119_999);
-    expect(resume).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(resume).toHaveBeenCalledOnce();
-  });
-
-  it('does not resume after the client has closed', async () => {
-    const kafka = await deliver(async () => 'pause');
-    await kafka.close();
-    vi.advanceTimersByTime(120_000);
-    expect(resume).not.toHaveBeenCalled();
-    expect(consumer.disconnect).toHaveBeenCalledOnce();
-  });
-
-  it('does not pause when the client closed while the handler was working', async () => {
-    await deliver(async () => {
-      isRunning.mockReturnValue(false);
-      return 'pause';
-    });
-    expect(pause).not.toHaveBeenCalled();
+    expect(resolveOffset).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('handles as many partitions at once as it is told to', async () => {
+    await deliver(async () => {});
+    expect(consumer.run.mock.calls[0]?.[0].partitionsConsumedConcurrently).toBe(3);
+  });
+
   it('says which partitions this worker reads after joining the group', async () => {
-    await deliver(async () => 'finished');
+    await deliver(async () => {});
     const [, onJoin] = consumer.on.mock.calls.find(([event]) => event === 'group-join') ?? [];
     onJoin({ payload: { memberAssignment: { logs: [0, 2] } } });
     expect(onPartitionsAssigned).toHaveBeenLastCalledWith([0, 2]);
@@ -191,7 +168,7 @@ describe('reading', () => {
   });
 
   it('tells the caller only when kafkajs stops for good', async () => {
-    await deliver(async () => 'finished');
+    await deliver(async () => {});
     const [, onCrash] = consumer.on.mock.calls.find(([event]) => event === 'crash') ?? [];
     const error = new Error('gave up');
 
@@ -202,12 +179,12 @@ describe('reading', () => {
   });
 
   it('has only one reader', async () => {
-    const kafka = await deliver(async () => 'finished');
+    const kafka = await deliver(async () => {});
     const options = {
       topic: 'logs',
       group: 'worker',
-      pauseMs: 1,
-      handleBatch: async () => 'finished' as const,
+      handleBatch: async () => {},
+      partitionsAtOnce: 3,
       onPartitionsAssigned,
       onGiveUp,
     };
@@ -250,7 +227,7 @@ describe('one instance, with init and close', () => {
   });
 
   it('stops reading before it closes the connection for sending', async () => {
-    const kafka = await deliver(async () => 'finished');
+    const kafka = await deliver(async () => {});
     const order: string[] = [];
     consumer.disconnect.mockImplementationOnce(async () => order.push('reading'));
     producer.disconnect.mockImplementationOnce(async () => order.push('sending'));
@@ -261,7 +238,7 @@ describe('one instance, with init and close', () => {
   });
 
   it('can still send while reading stops, for a batch still being handled', async () => {
-    const kafka = await deliver(async () => 'finished');
+    const kafka = await deliver(async () => {});
     let finishStopping: () => void = () => {};
     consumer.disconnect.mockImplementationOnce(
       () => new Promise<void>((resolve) => (finishStopping = resolve)),
@@ -281,7 +258,7 @@ describe('one instance, with init and close', () => {
   });
 
   it('refuses new work as soon as close is called', async () => {
-    const kafka = await deliver(async () => 'finished');
+    const kafka = await deliver(async () => {});
     const closing = kafka.close();
     await expect(kafka.init()).rejects.toThrow('is closed');
     await expect(kafka.topicExists('failed')).rejects.toThrow('is closed');
@@ -289,7 +266,7 @@ describe('one instance, with init and close', () => {
   });
 
   it('makes a second close wait for the first', async () => {
-    const kafka = await deliver(async () => 'finished');
+    const kafka = await deliver(async () => {});
     let finishStopping: () => void = () => {};
     consumer.disconnect.mockImplementationOnce(
       () => new Promise<void>((resolve) => (finishStopping = resolve)),
@@ -315,8 +292,8 @@ describe('one instance, with init and close', () => {
     const options = {
       topic: 'logs',
       group: 'worker',
-      pauseMs: 1,
-      handleBatch: async () => 'finished' as const,
+      handleBatch: async () => {},
+      partitionsAtOnce: 3,
       onPartitionsAssigned,
       onGiveUp,
     };
@@ -328,7 +305,7 @@ describe('one instance, with init and close', () => {
   });
 
   it('still closes the connection for sending when reading fails to close', async () => {
-    const kafka = await deliver(async () => 'finished');
+    const kafka = await deliver(async () => {});
     const printed = vi.spyOn(console, 'error').mockImplementation(() => {});
     consumer.disconnect.mockRejectedValueOnce(new Error('stuck'));
     await expect(kafka.close()).rejects.toThrow('stuck');

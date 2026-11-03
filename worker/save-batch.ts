@@ -8,12 +8,12 @@ type BatchSaverOptions = {
   sendFailedLogs: SendFailedLogs;
   // How many logs go into one bulk request.
   bulkSize: number;
-  // A log moves to the failed topic after this many rounds of failing while other logs saved.
-  moveStuckLogAfterRounds: number;
+  // How long to wait before trying again when nothing in a bulk request could be saved.
+  waitBeforeTryingAgainMs: number;
   // A log that still can't be saved moves to the failed topic once it's this old, before Kafka
   // deletes it from the logs topic.
   moveToFailedAfterMs: number;
-  // After this long unable to get through a partition, each new pause prints an alert.
+  // After this long unable to get through a partition, each new wait prints an alert.
   alertAfterMs: number;
 };
 
@@ -27,10 +27,8 @@ export type BatchSaver = {
 // What's known about a partition that's having trouble. It's forgotten when a batch finishes.
 type PartitionTrouble = {
   troubleSinceMs: number;
-  // For each log that keeps failing, how many rounds in a row it has failed while other logs saved.
-  failedRounds: Map<string, number>;
   // Logs already moved to the failed topic but not marked done, because an unsaved log sits before
-  // them. They're read again after the pause, and must not be sent or moved again. Each id is kept
+  // them. They're read again after the wait, and must not be sent or moved again. Each id is kept
   // with its timestamp, so a new message that reuses the id (see kafka/client.ts) isn't skipped.
   moved: Map<string, number>;
 };
@@ -40,6 +38,10 @@ type ReadableMessage = MessageFromKafka & { log: Log };
 
 // How much of a bad message to print in a warning.
 const longestTextInWarning = 1000;
+
+// A wait is cut into pieces this long, with a word to Kafka after each. Kafka drops a worker that stays
+// silent for 30 seconds, and a worker that is shutting down notices within one piece.
+const waitPieceMs = 1_000;
 
 function warnAboutBadMessage(id: string, why: string, text: string | null): void {
   const shown = text === null ? '' : `: ${text.slice(0, longestTextInWarning)}`;
@@ -75,26 +77,27 @@ function readMessage({ id, text }: MessageFromKafka): Log | null {
 // bulkSize logs, and each log ends up in one of four ways:
 //   - bad data (not a good log): a warning is printed and the worker moves on
 //   - saved in Elasticsearch
-//   - moved to the failed topic, because Elasticsearch refused it with a 400, or it's stuck or about
-//     to be deleted from Kafka
-//   - not saved yet: everything before it is marked done, and the partition pauses
+//   - moved to the failed topic, because Elasticsearch refused it with a 400, or it kept being refused
+//     (after the retries) while other logs in its request saved, or it's about to be deleted from Kafka
+//   - not saved yet: nothing in its request saved, which looks like Elasticsearch being down. Everything
+//     before it is marked done, the worker waits, and Kafka hands it over again with any newer logs.
+//     The partition is never paused.
 export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
-  const { saveLogs, sendFailedLogs, bulkSize } = options;
-  const { moveStuckLogAfterRounds, moveToFailedAfterMs, alertAfterMs } = options;
+  const { saveLogs, sendFailedLogs, bulkSize, waitBeforeTryingAgainMs } = options;
+  const { moveToFailedAfterMs, alertAfterMs } = options;
   const troubleByPartition = new Map<number, PartitionTrouble>();
 
-  // Decides which logs that couldn't be saved should move to the failed topic now.
+  // Decides which logs that couldn't be saved should move to the failed topic now. If other logs in the
+  // same request saved, Elasticsearch is working, so a log it kept refusing after the retries is the
+  // problem, and it moves. If nothing saved, Elasticsearch is the likely problem, so the logs wait,
+  // unless they are about to be deleted from Kafka.
   function chooseLogsToMove(
     unsavedLogs: LogNotSaved[],
     messagesById: Map<string, ReadableMessage>,
     otherLogsSaved: boolean,
-    trouble: PartitionTrouble,
   ): FailedLog[] {
     const logsToMove: FailedLog[] = [];
     for (const { id, reason } of unsavedLogs) {
-      const failedRounds = (trouble.failedRounds.get(id) ?? 0) + (otherLogsSaved ? 1 : 0);
-      trouble.failedRounds.set(id, failedRounds);
-
       const message = messagesById.get(id);
       if (message === undefined) {
         continue;
@@ -105,11 +108,11 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
           log: message.log,
           reason: `Kafka will delete it soon; last problem: ${reason}`,
         });
-      } else if (failedRounds >= moveStuckLogAfterRounds) {
+      } else if (otherLogsSaved) {
         logsToMove.push({
           id,
           log: message.log,
-          reason: `it failed ${failedRounds} rounds while other logs saved; last problem: ${reason}`,
+          reason: `Elasticsearch kept refusing it after the retries, while it saved other logs; last problem: ${reason}`,
         });
       }
     }
@@ -139,14 +142,6 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
     const logsToSave = [...messagesById.values()].map(({ id, log }) => ({ id, log }));
     const { savedCount, unsavedLogs, badRequestLogs } = await saveLogs(logsToSave, batch.keepAlive);
 
-    // The count is of rounds in a row, so a log that saved starts again from 0.
-    const unsavedIds = new Set(unsavedLogs.map(({ id }) => id));
-    for (const { id } of logsToSave) {
-      if (!unsavedIds.has(id)) {
-        trouble.failedRounds.delete(id);
-      }
-    }
-
     // Elasticsearch refused these with a 400 that blames the log, so they go to the failed topic now.
     // Waiting would only mean asking again and getting the same answer.
     const badRequestsToMove: FailedLog[] = [];
@@ -162,7 +157,7 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
     }
     const logsToMove = [
       ...badRequestsToMove,
-      ...chooseLogsToMove(unsavedLogs, messagesById, savedCount > 0, trouble),
+      ...chooseLogsToMove(unsavedLogs, messagesById, savedCount > 0),
     ];
     if (logsToMove.length === 0) {
       return unsavedLogs;
@@ -177,7 +172,6 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
       return [...unsavedLogs, ...badRequestLogs];
     }
     for (const { id, reason } of logsToMove) {
-      trouble.failedRounds.delete(id);
       const timestampMs = messagesById.get(id)?.timestampMs;
       if (timestampMs !== undefined) {
         trouble.moved.set(id, timestampMs);
@@ -187,10 +181,21 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
     return unsavedLogs.filter(({ id }) => !trouble.moved.has(id));
   }
 
+  // Waits, saying a word to Kafka now and then so the worker isn't dropped from its group. Stops early
+  // if the worker is shutting down.
+  async function waitBeforeTryingAgain(batch: MessageBatch): Promise<void> {
+    let leftMs = waitBeforeTryingAgainMs;
+    while (leftMs > 0 && !batch.shouldStop()) {
+      const pieceMs = Math.min(leftMs, waitPieceMs);
+      await new Promise((resolve) => setTimeout(resolve, pieceMs));
+      leftMs -= pieceMs;
+      await batch.keepAlive();
+    }
+  }
+
   const handleBatch: HandleBatch = async (batch) => {
     const trouble = troubleByPartition.get(batch.partition) ?? {
       troubleSinceMs: Date.now(),
-      failedRounds: new Map<string, number>(),
       moved: new Map<string, number>(),
     };
 
@@ -198,7 +203,7 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
       // The worker is shutting down, or this partition's position changed. Whatever isn't marked
       // done is handed over again later.
       if (batch.shouldStop()) {
-        return 'finished';
+        return;
       }
 
       const group = batch.messages.slice(start, start + bulkSize);
@@ -225,13 +230,15 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
             `worker: ALERT: partition ${batch.partition} has not got through a batch in ${Math.round(troubleMs / 60_000)} minutes`,
           );
         }
-        return 'pause';
+        // Returning without marking these logs done makes Kafka hand them over again straight away,
+        // so the wait has to happen here.
+        await waitBeforeTryingAgain(batch);
+        return;
       }
       await batch.keepAlive();
     }
 
     troubleByPartition.delete(batch.partition);
-    return 'finished';
   };
 
   return {

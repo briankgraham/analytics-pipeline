@@ -59,12 +59,12 @@ One small PR at a time:
 4. **Save logs:** the worker reads from Kafka and saves to Elasticsearch. A log counts as done in
    Kafka only after it's saved, so a crash means it's read again, never lost (rarely, saved twice).
    A message that isn't a good log is skipped with a warning.
-   Logs are saved in bulk. If Elasticsearch is too busy, the worker retries, then pauses and tries again
-   rather than losing anything. Bad data is only logged, and only the worker's own check of a log can decide that; a log Elasticsearch
+   Logs are saved in bulk. If Elasticsearch is too busy, the worker retries, then waits and tries again
+   rather than losing anything. It never pauses a partition. Bad data is only logged, and only the worker's own check of a log can decide that; a log Elasticsearch
    refuses is never thrown away. A log Elasticsearch refuses with a 400 that blames the document (the
    index is strict, so an unlisted field counts) is sent once and goes straight to the `failed` topic.
-   A good log that's stuck, or about to be deleted by Kafka, moves there too. That topic keeps logs
-   for longer.
+   A good log that still fails after the retries while other logs in its request save, or that is
+   about to be deleted by Kafka, moves there too. That topic keeps logs for longer.
 5. **Search:** `GET /search?q=word` in the API, plus a script that sends a test log. This is the first
    full demo.
 

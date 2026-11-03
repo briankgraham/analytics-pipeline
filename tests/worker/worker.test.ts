@@ -65,10 +65,10 @@ vi.mock('@elastic/elasticsearch', () => ({
 const settings: WorkerSettings = {
   kafkaBrokers: ['b:9092'],
   topic: 'logs',
+  topicPartitions: 3,
   failedTopic: 'failed',
   group: 'worker',
-  pauseMs: 1000,
-  moveStuckLogAfterRounds: 3,
+  waitBeforeTryingAgainMs: 1000,
   moveToFailedAfterMs: 1000,
   alertAfterMs: 1000,
   elasticsearchUrl: 'http://127.0.0.1:9200',
@@ -107,9 +107,9 @@ describe('Worker', () => {
 
   it('has only one instance, and refuses different settings', () => {
     expect(getWorker()).toBe(getWorker());
-    expect(() => Worker.getInstance({ ...settings, pauseMs: 2 }, stopProgram)).toThrow(
-      'different settings',
-    );
+    expect(() =>
+      Worker.getInstance({ ...settings, waitBeforeTryingAgainMs: 2 }, stopProgram),
+    ).toThrow('different settings');
     expect(() => Worker.getInstance(settings, () => {})).toThrow('different settings');
   });
 

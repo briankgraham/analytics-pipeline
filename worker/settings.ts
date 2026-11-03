@@ -6,10 +6,11 @@ import { longestWaitMs, type RetrySettings } from '../retries/with-retries.ts';
 export type WorkerSettings = {
   kafkaBrokers: string[];
   topic: string;
+  // How many partitions the topic has, so the worker can handle them all at the same time.
+  topicPartitions: number;
   failedTopic: string;
   group: string;
-  pauseMs: number;
-  moveStuckLogAfterRounds: number;
+  waitBeforeTryingAgainMs: number;
   moveToFailedAfterMs: number;
   alertAfterMs: number;
   elasticsearchUrl: string;
@@ -24,9 +25,6 @@ export type WorkerSettings = {
 // speaks up before each wait, so the silence is one wait plus one request. kafkajs can also hold back
 // a heartbeat for up to 3 seconds if it sent one recently, which leaves this much.
 const longestAllowedSilenceMs = 27_000;
-
-// setTimeout can't wait longer than this (about 24 days). Beyond it, the wait ends almost at once.
-const longestTimerMs = 2 ** 31 - 1;
 
 // More retries than this would keep one round going for far too long.
 const mostRetries = 20;
@@ -128,21 +126,17 @@ export function readWorkerSettings(yamlText: string): WorkerSettings {
   if (groupSize < 2) {
     throw new Error('elasticsearch.bulkSize must be at least 2');
   }
-  const pause = readWholeNumber(worker.pauseMs, 'worker.pauseMs');
-  if (pause > longestTimerMs) {
-    throw new Error(`worker.pauseMs must be at most ${longestTimerMs}`);
-  }
   const timeoutMs = readWholeNumber(requestTimeoutMs, 'elasticsearch.requestTimeoutMs');
 
   return {
     kafkaBrokers,
     topic,
+    topicPartitions: logsTopic.partitions,
     failedTopic,
     group,
-    pauseMs: pause,
-    moveStuckLogAfterRounds: readWholeNumber(
-      worker.moveStuckLogAfterRounds,
-      'worker.moveStuckLogAfterRounds',
+    waitBeforeTryingAgainMs: readWholeNumber(
+      worker.waitBeforeTryingAgainMs,
+      'worker.waitBeforeTryingAgainMs',
     ),
     moveToFailedAfterMs: moveAfterDays * dayMs,
     alertAfterMs: readWholeNumber(worker.alertAfterMs, 'worker.alertAfterMs'),
