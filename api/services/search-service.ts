@@ -13,6 +13,12 @@ export const canTryAgainLater = canPassWithTime;
 // every log matches equally, so the order means nothing. Throws if Elasticsearch couldn't answer.
 export type SearchLogs = (criteria: readonly LogCriterion[]) => Promise<Log[]>;
 
+// TODO: also answer with counts for each filter value (facets), such as how many matching logs each
+// level and service has, so people can see what's behind their results. Each filter's counts must ignore
+// that filter's own value, or choosing level=error would show every other level as 0. Compare two ways:
+// one request using aggregations and post_filter, or separate queries at once with Promise.all, which
+// lets the logs still return when the counts are slow or fail.
+//
 // Returns the function that searches the given index.
 export function createLogSearcher(
   client: Pick<ElasticsearchClient, 'searchDocuments'>,

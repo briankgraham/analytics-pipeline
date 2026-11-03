@@ -72,5 +72,7 @@ One small PR at a time:
 
 - Counting logs per minute, and error rates.
 - A live dashboard.
+- Counts for each search filter (facets), such as how many matching logs each level and service has,
+  in one request or in parallel with the logs (see the TODO in `api/services/search-service.ts`).
 - Hard cases: logs that arrive late, logs sent twice, and bad input.
 - Alerts when error rates are high.
