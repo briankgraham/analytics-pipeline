@@ -2,6 +2,7 @@ import type { LogNotSaved, SaveLogs } from '../elasticsearch/save-logs.ts';
 import type { HandleBatch, MessageBatch, MessageFromKafka } from '../kafka/client.ts';
 import type { FailedLog, SendFailedLogs } from '../kafka/send-failed-logs.ts';
 import { readLog, type Log } from '../logs/log.ts';
+import { workerName } from './worker-name.ts';
 
 type BatchSaverOptions = {
   saveLogs: SaveLogs;
@@ -45,7 +46,7 @@ const waitPieceMs = 1_000;
 
 function warnAboutBadMessage(id: string, why: string, text: string | null): void {
   const shown = text === null ? '' : `: ${text.slice(0, longestTextInWarning)}`;
-  console.warn(`worker: skipped the message ${id}: ${why}${shown}`);
+  console.warn(`${workerName}: skipped the message ${id}: ${why}${shown}`);
 }
 
 // Turns a message's text into a log. Returns null, with a warning, if it isn't a good log, because
@@ -168,7 +169,7 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
       await sendFailedLogs(logsToMove);
     } catch (error) {
       // The logs stay in the logs topic and aren't marked done, so nothing is lost.
-      console.error('worker: could not write to the failed topic:', error);
+      console.error(`${workerName}: could not write to the failed topic:`, error);
       return [...unsavedLogs, ...badRequestLogs];
     }
     for (const { id, reason } of logsToMove) {
@@ -176,7 +177,7 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
       if (timestampMs !== undefined) {
         trouble.moved.set(id, timestampMs);
       }
-      console.error(`worker: moved ${id} to the failed topic: ${reason}`);
+      console.error(`${workerName}: moved ${id} to the failed topic: ${reason}`);
     }
     return unsavedLogs.filter(({ id }) => !trouble.moved.has(id));
   }
@@ -222,12 +223,12 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
       if (firstUnsaved !== -1) {
         troubleByPartition.set(batch.partition, trouble);
         console.error(
-          `worker: ${stillUnsaved.length} logs in partition ${batch.partition} are not saved yet: ${stillUnsaved[0]?.reason}`,
+          `${workerName}: ${stillUnsaved.length} logs in partition ${batch.partition} are not saved yet: ${stillUnsaved[0]?.reason}`,
         );
         const troubleMs = Date.now() - trouble.troubleSinceMs;
         if (troubleMs >= alertAfterMs) {
           console.error(
-            `worker: ALERT: partition ${batch.partition} has not got through a batch in ${Math.round(troubleMs / 60_000)} minutes`,
+            `${workerName}: ALERT: partition ${batch.partition} has not got through a batch in ${Math.round(troubleMs / 60_000)} minutes`,
           );
         }
         // Returning without marking these logs done makes Kafka hand them over again straight away,
