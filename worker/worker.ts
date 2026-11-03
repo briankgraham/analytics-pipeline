@@ -11,8 +11,20 @@ import type { StopProgram } from '../services/run-program.ts';
 import type { Service } from '../services/service.ts';
 import { createBatchSaver } from './save-batch.ts';
 import type { WorkerSettings } from './settings.ts';
+import { workerName } from './worker-name.ts';
 
 const closedMessage = 'Worker is closed: get a new one with getInstance()';
+
+// Says which partitions this worker now reads. Kafka shares them out again whenever a worker joins or
+// leaves, so this is how you see the split, and a worker left with none.
+function printPartitions(topic: string, partitions: number[]): void {
+  if (partitions.length === 0) {
+    console.log(`${workerName}: no partitions of "${topic}" to read, waiting as a spare`);
+    return;
+  }
+  const inOrder = partitions.toSorted((a, b) => a - b).join(', ');
+  console.log(`${workerName}: now reading these partitions of "${topic}": ${inOrder}`);
+}
 
 export class Worker implements Service {
   private static instance: Worker | undefined;
@@ -67,7 +79,7 @@ export class Worker implements Service {
     await this.startService(elasticsearch);
     await setUpLogsIndex(elasticsearch, settings.index, settings.replicas, settings.retries);
     this.throwIfClosed();
-    const kafka = KafkaClient.getInstance(settings.kafkaBrokers, 'worker');
+    const kafka = KafkaClient.getInstance(settings.kafkaBrokers, workerName);
     await this.startService(kafka);
     const sendFailedLogs = await createFailedLogSender(kafka, settings.failedTopic);
     this.throwIfClosed();
@@ -85,11 +97,14 @@ export class Worker implements Service {
       group: settings.group,
       handleBatch: batchSaver.handleBatch,
       partitionsAtOnce: settings.topicPartitions,
-      onPartitionsAssigned: batchSaver.keepOnlyPartitions,
+      onPartitionsAssigned: (partitions) => {
+        printPartitions(settings.topic, partitions);
+        batchSaver.keepOnlyPartitions(partitions);
+      },
       onGiveUp: this.stopProgram,
     });
     console.log(
-      `worker: reading "${settings.topic}" from Kafka, saving to the "${settings.index}" index`,
+      `${workerName}: reading "${settings.topic}" from Kafka, saving to the "${settings.index}" index`,
     );
   }
 
@@ -115,7 +130,7 @@ export class Worker implements Service {
       try {
         await service.close();
       } catch (error) {
-        console.error('worker: could not close a service:', error);
+        console.error(`${workerName}: could not close a service:`, error);
         everythingClosed = false;
       }
     }
