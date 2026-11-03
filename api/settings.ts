@@ -1,11 +1,14 @@
 import { parse } from 'yaml';
-import { readKafkaBrokers, section } from '../config/read-config.ts';
+import { readElasticsearchConnection, readKafkaBrokers, section } from '../config/read-config.ts';
 import { readTopics } from '../kafka/topics.ts';
 
 export type ApiSettings = {
   port: number;
   kafkaBrokers: string[];
   topic: string;
+  elasticsearchUrl: string;
+  index: string;
+  requestTimeoutMs: number;
 };
 
 // Reads the API's settings from the text of a config file (config/local.yml). Throws an error naming
@@ -23,5 +26,5 @@ export function readApiSettings(yamlText: string): ApiSettings {
     throw new Error('api.topic must be the name of a topic listed under "topics:"');
   }
 
-  return { port, kafkaBrokers, topic };
+  return { port, kafkaBrokers, topic, ...readElasticsearchConnection(file) };
 }

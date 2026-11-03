@@ -1,11 +1,11 @@
 import type { Middleware } from 'koa';
-import type { SendLog } from '../../kafka/send-log.ts';
+import type { SendLog } from '../services/message-service.ts';
 import { readLog } from '../../logs/log.ts';
 
 // The last step of POST /v1/message (see routes/v1/message.ts): checks the log in the body and puts it into
 // Kafka. `sendLog` is what does the putting; server.ts gives the real one (see dependencies.ts).
-export function receiveMessage(sendLog: SendLog): Middleware {
-  return async function receiveMessage(ctx) {
+export function messageController(sendLog: SendLog): Middleware {
+  return async function messageController(ctx) {
     const result = readLog(ctx.request.body);
     if (!result.ok) {
       ctx.status = 400;

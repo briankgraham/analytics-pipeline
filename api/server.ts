@@ -4,10 +4,12 @@
 import type { Server } from 'node:http';
 import { isDeepStrictEqual } from 'node:util';
 import type Koa from 'koa';
+import { ElasticsearchClient } from '../elasticsearch/client.ts';
 import { KafkaClient } from '../kafka/client.ts';
-import { createLogSender } from '../kafka/send-log.ts';
 import type { Service } from '../services/service.ts';
 import { createApp } from './app.ts';
+import { createLogSender } from './services/message-service.ts';
+import { createLogSearcher } from './services/search-service.ts';
 import type { ApiSettings } from './settings.ts';
 
 // Listening on 127.0.0.1 means only this machine can reach the API.
@@ -76,16 +78,23 @@ export class ApiServer implements Service {
   }
 
   private async start(): Promise<void> {
-    const { port, topic, kafkaBrokers } = this.settings;
+    const { port, topic, kafkaBrokers, elasticsearchUrl, index, requestTimeoutMs } = this.settings;
 
     const kafka = KafkaClient.getInstance(kafkaBrokers, 'api');
     await this.startService(kafka);
-    const app = createApp({ sendLog: createLogSender(kafka, topic) });
+    const elasticsearch = ElasticsearchClient.getInstance(elasticsearchUrl, requestTimeoutMs);
+    await this.startService(elasticsearch);
+    const app = createApp({
+      sendLog: createLogSender(kafka, topic),
+      searchLogs: createLogSearcher(elasticsearch, index),
+    });
     if (this.closed) {
       throw new Error(closedMessage);
     }
     this.server = await openPort(app, port);
-    console.log(`api: listening on http://${host}:${port}, sending logs to "${topic}"`);
+    console.log(
+      `api: listening on http://${host}:${port}, sending logs to "${topic}", searching the "${index}" index`,
+    );
   }
 
   // Waits for any start-up still working, stops taking requests and lets the ones in progress finish,

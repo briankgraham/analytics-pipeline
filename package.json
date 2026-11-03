@@ -14,6 +14,7 @@
     "topics": "node kafka/create-topics.ts",
     "api": "node api/main.ts",
     "worker": "node worker/main.ts",
+    "send-test-log": "node scripts/send-test-log.ts",
     "verify": "pnpm format:check && pnpm typecheck && pnpm test"
   },
   "devDependencies": {

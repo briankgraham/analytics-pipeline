@@ -65,12 +65,14 @@ One small PR at a time:
    index is strict, so an unlisted field counts) is sent once and goes straight to the `failed` topic.
    A good log that still fails after the retries while other logs in its request save, or that is
    about to be deleted by Kafka, moves there too. That topic keeps logs for longer.
-5. **Search:** `GET /search?q=word` in the API, plus a script that sends a test log. This is the first
-   full demo.
+5. **Search:** `GET /v1/search?q=word` in the API, plus a script that sends a test log. This is the
+   first full demo.
 
 ## Later, planned once the first goal works
 
 - Counting logs per minute, and error rates.
 - A live dashboard.
+- Counts for each search filter (facets), such as how many matching logs each level and service has,
+  in one request or in parallel with the logs (see the TODO in `api/services/search-service.ts`).
 - Hard cases: logs that arrive late, logs sent twice, and bad input.
 - Alerts when error rates are high.

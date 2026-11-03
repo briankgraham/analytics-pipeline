@@ -17,8 +17,8 @@
 # api.topic:     the topic the API puts accepted logs into. It must be listed under topics.
 #
 # elasticsearch.url:      where Elasticsearch answers (the address docker-compose.yml publishes).
-# elasticsearch.index:    the index (Elasticsearch's word for a table) the worker saves logs into.
-#                         The worker creates it on start if it's missing.
+# elasticsearch.index:    the index (Elasticsearch's word for a table) the worker saves logs into and
+#                         the API searches. The worker creates it on start if it's missing.
 # elasticsearch.replicas: how many extra copies of the index Elasticsearch keeps, on other servers.
 #                         Locally there's only one server, so 0; a copy would have nowhere to go.
 # elasticsearch.bulkSize: the most logs sent to Elasticsearch in one request, at least 2. The worker
