@@ -33,20 +33,22 @@
 #                         workers don't all come back at the same moment.
 #                         The longest wait plus requestTimeoutMs can be at most 27 seconds, because
 #                         Kafka drops a worker that's silent for 30. maxRetries can be at most 20. If
-#                         the retries run out while saving logs, the
-#                         partition pauses (see worker.pauseMs). If they run out while creating the
+#                         the retries run out while saving logs, the log goes to the failed topic if
+#                         other logs in its request saved; if none did, the worker waits (see
+#                         worker.waitBeforeTryingAgainMs). If they run out while creating the
 #                         index or checking its fields, the worker stops.
 # worker.topic:           the topic the worker reads logs from. It must be listed under topics.
 # worker.failedTopic:     where good logs go when they can't be saved, as the next two settings say.
 # worker.group:           the name the worker reads under. Kafka remembers how far each group has
 #                         read, so a restarted worker carries on where it stopped.
-# worker.pauseMs:         how long to stop reading a partition when its retries run out. The logs wait
-#                         safely in Kafka, then the worker tries again from the first unsaved one.
-# worker.moveStuckLogAfterRounds: move a log to the failed topic after it fails this many rounds of
-#                         retries while other logs in its requests saved.
+# worker.waitBeforeTryingAgainMs: how long to wait when the retries run out and none of the logs in a
+#                         request saved, which looks like Elasticsearch being down. The logs wait
+#                         safely in Kafka, and the worker reads them again, with any newer ones. A
+#                         partition is never paused. Keep it short: while the worker waits, Kafka
+#                         can't hand it new logs from any of its partitions.
 # worker.moveToFailedAfterDays:   move a log that still can't be saved to the failed topic once it's
 #                         this old. It must be less than the logs topic's retentionDays.
-# worker.alertAfterMs:    print an alert at each pause once a partition has been stuck this long.
+# worker.alertAfterMs:    print an alert at each wait once a partition has been stuck this long.
 
 kafka:
   brokers:
@@ -72,8 +74,7 @@ worker:
   topic: logs
   failedTopic: failed
   group: worker
-  pauseMs: 120000
-  moveStuckLogAfterRounds: 10
+  waitBeforeTryingAgainMs: 5000
   moveToFailedAfterDays: 6
   alertAfterMs: 600000
 

@@ -76,15 +76,15 @@ export class Worker implements Service {
       saveLogs: createLogSaver(elasticsearch, settings.index, settings.retries),
       sendFailedLogs,
       bulkSize: settings.bulkSize,
-      moveStuckLogAfterRounds: settings.moveStuckLogAfterRounds,
+      waitBeforeTryingAgainMs: settings.waitBeforeTryingAgainMs,
       moveToFailedAfterMs: settings.moveToFailedAfterMs,
       alertAfterMs: settings.alertAfterMs,
     });
     await kafka.startReading({
       topic: settings.topic,
       group: settings.group,
-      pauseMs: settings.pauseMs,
       handleBatch: batchSaver.handleBatch,
+      partitionsAtOnce: settings.topicPartitions,
       onPartitionsAssigned: batchSaver.keepOnlyPartitions,
       onGiveUp: this.stopProgram,
     });

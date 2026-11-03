@@ -30,16 +30,18 @@ export type MessageBatch = {
   shouldStop: () => boolean;
 };
 
-// 'finished' moves on to the next batch. 'pause' stops reading this partition for a while, then
-// carries on from the first message that isn't marked done. Throw only for unexpected problems.
-export type HandleBatch = (batch: MessageBatch) => Promise<'finished' | 'pause'>;
+// Handles one batch. Messages not marked done when it returns are handed over again straight away,
+// together with any newer ones, so a handler that wants to wait must do it before returning. Throw only
+// for unexpected problems.
+export type HandleBatch = (batch: MessageBatch) => Promise<void>;
 
 export type ReadOptions = {
   topic: string;
   group: string;
-  // How long a pause lasts. The reader stays in its group during a pause.
-  pauseMs: number;
   handleBatch: HandleBatch;
+  // How many partitions are handled at the same time. With 1, a handler that waits holds up every other
+  // partition this reader has, so set it to the topic's number of partitions.
+  partitionsAtOnce: number;
   // Called each time the reader joins its group, with the partitions it now reads.
   onPartitionsAssigned: (partitions: number[]) => void;
   // Called if kafkajs stops reading for good (it restarts by itself after most errors).
@@ -59,7 +61,6 @@ export class KafkaClient implements Service {
   private closing: Promise<void> | undefined;
   private ready = false;
   private closed = false;
-  private readonly resumeTimers = new Set<NodeJS.Timeout>();
   private readonly brokers: string[];
   private readonly clientId: string;
 
@@ -118,10 +119,6 @@ export class KafkaClient implements Service {
     if (KafkaClient.instance === this) {
       KafkaClient.instance = undefined;
     }
-    for (const timer of this.resumeTimers) {
-      clearTimeout(timer);
-    }
-    this.resumeTimers.clear();
     await this.connecting?.catch(() => {});
 
     try {
@@ -171,7 +168,7 @@ export class KafkaClient implements Service {
   // rest again on restart. A group reading for the first time starts at the oldest message still in the
   // topic. A batch holds whatever is available, so nothing waits for a batch to fill up.
   async startReading(options: ReadOptions): Promise<void> {
-    const { topic, group, pauseMs, handleBatch, onPartitionsAssigned, onGiveUp } = options;
+    const { topic, group, onPartitionsAssigned, onGiveUp } = options;
     const { kafka } = this.started();
     if (this.consumer !== undefined) {
       throw new Error('KafkaClient is already reading');
@@ -201,14 +198,16 @@ export class KafkaClient implements Service {
   }
 
   private async runConsumer(consumer: Consumer, options: ReadOptions): Promise<void> {
-    const { topic, pauseMs, handleBatch } = options;
+    const { topic, handleBatch, partitionsAtOnce } = options;
     await consumer.run({
-      // Without this, kafkajs marks the whole batch done when the handler returns, even after a pause.
+      partitionsConsumedConcurrently: partitionsAtOnce,
+      // Without this, kafkajs marks the whole batch done when the handler returns, even if the handler left
+      // some messages unsaved.
       eachBatchAutoResolve: false,
       eachBatch: async (kafkaBatch) => {
-        const { batch, resolveOffset, heartbeat, pause, isRunning, isStale } = kafkaBatch;
+        const { batch, resolveOffset, heartbeat, isRunning, isStale } = kafkaBatch;
 
-        const answer = await handleBatch({
+        await handleBatch({
           partition: batch.partition,
           messages: batch.messages.map((message) => ({
             id: `${topic}-${batch.partition}-${message.offset}`,
@@ -220,18 +219,6 @@ export class KafkaClient implements Service {
           markDone: resolveOffset,
           shouldStop: () => !isRunning() || isStale(),
         });
-
-        // A reader that's closing doesn't pause: it's stopping anyway, and a timer started now would
-        // keep the program running after everything else has closed.
-        if (answer === 'pause' && isRunning()) {
-          console.warn(`kafka: pausing partition ${batch.partition} for ${pauseMs} ms`);
-          const resume = pause();
-          const timer = setTimeout(() => {
-            this.resumeTimers.delete(timer);
-            resume();
-          }, pauseMs);
-          this.resumeTimers.add(timer);
-        }
       },
     });
   }
