@@ -7,7 +7,7 @@ import type Koa from 'koa';
 import { ElasticsearchClient } from '../elasticsearch/client.ts';
 import { KafkaClient } from '../kafka/client.ts';
 import { createLogSender } from '../kafka/send-log.ts';
-import { createLogSearcher } from '../search/search-logs.ts';
+import { createLogSearcher } from '../search/search-service.ts';
 import type { Service } from '../services/service.ts';
 import { createApp } from './app.ts';
 import type { ApiSettings } from './settings.ts';

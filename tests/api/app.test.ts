@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Log } from '../../logs/log.ts';
 import { createApp } from '../../api/app.ts';
-import type { SearchLogs } from '../../search/search-logs.ts';
+import type { SearchLogs } from '../../search/search-service.ts';
 
 const good = { service: 'checkout', level: 'error', message: 'card declined' };
 

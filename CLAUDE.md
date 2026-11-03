@@ -67,7 +67,7 @@ api/controllers/  the last step of each route: reads the request, calls the serv
 api/dependencies.ts  what the routes need from outside (like sending a log); server.ts fills it in
 api/middleware/   the steps a request passes through before its controller, one function per file, named for what it does
 worker/           reads logs from Kafka and saves them to Elasticsearch; worker.ts starts and closes it all
-search/           the search service for logs: build-criteria.ts turns URL values into criteria, build-query.ts adds our choices, search-logs.ts runs it
+search/           the search service for logs: build-criteria.ts turns URL values into criteria, build-query.ts adds our choices, search-service.ts runs it
 scripts/          small helper scripts, such as sending a test log
 logs/             what a log is (its shape, and checking one), used by both the API and the worker
 tests/            every test, in folders that match the code folders (tests/api tests the api folder)

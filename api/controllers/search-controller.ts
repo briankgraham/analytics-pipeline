@@ -1,7 +1,7 @@
 import { parse } from 'node:querystring';
 import type { Middleware } from 'koa';
 import { buildCriteria } from '../../search/build-criteria.ts';
-import { canTryAgainLater, type SearchLogs } from '../../search/search-logs.ts';
+import { canTryAgainLater, type SearchLogs } from '../../search/search-service.ts';
 
 // The last step of GET /v1/search (see routes/v1/search.ts): checks the URL's values and answers with
 // the logs that match. `searchLogs` does the searching; server.ts gives the real one (see dependencies.ts).

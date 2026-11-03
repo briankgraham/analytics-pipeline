@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LogCriterion } from '../../search/build-criteria.ts';
-import { createLogSearcher } from '../../search/search-logs.ts';
+import { createLogSearcher } from '../../search/search-service.ts';
 
 const log = { service: 'checkout', level: 'error', message: 'card declined' };
 const criteria: LogCriterion[] = [{ type: 'exact', field: 'level', value: 'error' }];
