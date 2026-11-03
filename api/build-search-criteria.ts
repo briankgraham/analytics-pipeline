@@ -1,10 +1,7 @@
-import type { Criterion } from '../elasticsearch/search-criteria-builder/criteria.ts';
+import type { LogCriterion } from '../elasticsearch/build-logs-query.ts';
 import { levels } from '../logs/log.ts';
 
-// The fields of a log that can be searched, by how logFields in elasticsearch/logs-index.ts stores them.
-export type LogCriterion = Criterion<'message', 'service' | 'level'>;
-
-export type BuildCriteriaResult =
+export type BuildSearchCriteriaResult =
   { ok: true; criteria: LogCriterion[] } | { ok: false; problem: string };
 
 const knownValues = ['q', 'service', 'level'];
@@ -14,7 +11,7 @@ type UrlValues = Record<string, string | string[] | undefined>;
 
 // Checks the values from a search URL and turns them into criteria, or returns a plain sentence saying
 // what is wrong. A misspelled name is refused, because ignoring it would quietly find too many logs.
-export function buildCriteria(values: UrlValues): BuildCriteriaResult {
+export function buildSearchCriteria(values: UrlValues): BuildSearchCriteriaResult {
   const unknown = Object.keys(values).find((name) => !knownValues.includes(name));
   if (unknown !== undefined) {
     return {

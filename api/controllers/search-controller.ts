@@ -1,6 +1,6 @@
 import { parse } from 'node:querystring';
 import type { Middleware } from 'koa';
-import { buildCriteria } from '../../search/build-criteria.ts';
+import { buildSearchCriteria } from '../build-search-criteria.ts';
 import { canTryAgainLater, type SearchLogs } from '../services/search-service.ts';
 
 // The last step of GET /v1/search (see routes/v1/search.ts): checks the URL's values and answers with
@@ -8,8 +8,10 @@ import { canTryAgainLater, type SearchLogs } from '../services/search-service.ts
 export function searchController(searchLogs: SearchLogs): Middleware {
   return async function searchController(ctx) {
     // Not ctx.query: Koa builds it on a plain object, so a name like __proto__ never shows up as a value
-    // and buildCriteria couldn't refuse it. maxKeys 0 means no limit, so no name goes unchecked.
-    const result = buildCriteria(parse(ctx.querystring, undefined, undefined, { maxKeys: 0 }));
+    // and buildSearchCriteria couldn't refuse it. maxKeys 0 means no limit, so no name goes unchecked.
+    const result = buildSearchCriteria(
+      parse(ctx.querystring, undefined, undefined, { maxKeys: 0 }),
+    );
     if (!result.ok) {
       ctx.status = 400;
       ctx.body = { error: result.problem };
