@@ -1,5 +1,5 @@
 import type { Middleware } from 'koa';
-import type { SendLog } from '../../kafka/send-log.ts';
+import type { SendLog } from '../services/message-service.ts';
 import { readLog } from '../../logs/log.ts';
 
 // The last step of POST /v1/message (see routes/v1/message.ts): checks the log in the body and puts it into

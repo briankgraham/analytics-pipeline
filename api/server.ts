@@ -6,10 +6,10 @@ import { isDeepStrictEqual } from 'node:util';
 import type Koa from 'koa';
 import { ElasticsearchClient } from '../elasticsearch/client.ts';
 import { KafkaClient } from '../kafka/client.ts';
-import { createLogSender } from '../kafka/send-log.ts';
-import { createLogSearcher } from '../search/search-service.ts';
 import type { Service } from '../services/service.ts';
 import { createApp } from './app.ts';
+import { createLogSender } from './services/message-service.ts';
+import { createLogSearcher } from './services/search-service.ts';
 import type { ApiSettings } from './settings.ts';
 
 // Listening on 127.0.0.1 means only this machine can reach the API.

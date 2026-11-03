@@ -1,9 +1,10 @@
-// The search service: how the API finds logs, built on the base layer in elasticsearch/client.ts. The
-// rest of the API gets a plain `searchLogs` function, so it can be tested without a running Elasticsearch.
-import { canPassWithTime, type ElasticsearchClient } from '../elasticsearch/client.ts';
-import type { Log } from '../logs/log.ts';
-import type { LogCriterion } from './build-criteria.ts';
-import { buildQuery } from './build-query.ts';
+// The service for GET /v1/search: how the API finds logs, built on the base layer in
+// elasticsearch/client.ts. The rest of the API gets a plain `searchLogs` function, so it can be tested
+// without a running Elasticsearch.
+import { canPassWithTime, type ElasticsearchClient } from '../../elasticsearch/client.ts';
+import type { Log } from '../../logs/log.ts';
+import type { LogCriterion } from '../../search/build-criteria.ts';
+import { buildQuery } from '../../search/build-query.ts';
 
 // Says whether a failed search could work if tried again, as opposed to needing a person.
 export const canTryAgainLater = canPassWithTime;
