@@ -75,7 +75,8 @@ function readMessage({ id, text }: MessageFromKafka): Log | null {
 // bulkSize logs, and each log ends up in one of four ways:
 //   - bad data (not a good log): a warning is printed and the worker moves on
 //   - saved in Elasticsearch
-//   - moved to the failed topic, because it's stuck or about to be deleted from Kafka
+//   - moved to the failed topic, because Elasticsearch refused it with a 400, or it's stuck or about
+//     to be deleted from Kafka
 //   - not saved yet: everything before it is marked done, and the partition pauses
 export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
   const { saveLogs, sendFailedLogs, bulkSize } = options;
@@ -136,7 +137,7 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
     }
 
     const logsToSave = [...messagesById.values()].map(({ id, log }) => ({ id, log }));
-    const { savedCount, unsavedLogs } = await saveLogs(logsToSave, batch.keepAlive);
+    const { savedCount, unsavedLogs, badRequestLogs } = await saveLogs(logsToSave, batch.keepAlive);
 
     // The count is of rounds in a row, so a log that saved starts again from 0.
     const unsavedIds = new Set(unsavedLogs.map(({ id }) => id));
@@ -146,7 +147,23 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
       }
     }
 
-    const logsToMove = chooseLogsToMove(unsavedLogs, messagesById, savedCount > 0, trouble);
+    // Elasticsearch refused these with a 400 that blames the log, so they go to the failed topic now.
+    // Waiting would only mean asking again and getting the same answer.
+    const badRequestsToMove: FailedLog[] = [];
+    for (const { id, reason } of badRequestLogs) {
+      const message = messagesById.get(id);
+      if (message !== undefined) {
+        badRequestsToMove.push({
+          id,
+          log: message.log,
+          reason: `Elasticsearch refused it: ${reason}`,
+        });
+      }
+    }
+    const logsToMove = [
+      ...badRequestsToMove,
+      ...chooseLogsToMove(unsavedLogs, messagesById, savedCount > 0, trouble),
+    ];
     if (logsToMove.length === 0) {
       return unsavedLogs;
     }
@@ -157,7 +174,7 @@ export function createBatchSaver(options: BatchSaverOptions): BatchSaver {
     } catch (error) {
       // The logs stay in the logs topic and aren't marked done, so nothing is lost.
       console.error('worker: could not write to the failed topic:', error);
-      return unsavedLogs;
+      return [...unsavedLogs, ...badRequestLogs];
     }
     for (const { id, reason } of logsToMove) {
       trouble.failedRounds.delete(id);

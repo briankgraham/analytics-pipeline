@@ -97,10 +97,14 @@ What happens to a log that can't be saved (the settings are in `config/local.yml
 
 - **Bad data** (not a valid log): the worker prints a warning saying
   where it is, why, and up to 1,000 characters of it, then moves on. It isn't stored anywhere else.
-- **Elasticsearch is too busy, down, or refuses a log for any reason:** the worker retries with random, growing waits, resending
-  only the logs that weren't saved (`elasticsearch.retries`). If that doesn't work, it stops reading
+- **Elasticsearch is too busy, down, or refuses a log for a reason that isn't the log's fault** (for
+  example a closed index): the worker retries with random, growing waits, resending only the logs that
+  weren't saved (`elasticsearch.retries`). If that doesn't work, it stops reading
   that partition for `worker.pauseMs`, then tries again. The logs wait safely in Kafka meanwhile. Once
   a partition has been in trouble for `worker.alertAfterMs`, each pause also prints an `ALERT`.
+- **Elasticsearch refuses the log itself** (a 400 that says the document is the problem, such as a
+  field with the wrong type or a field the index doesn't list): it is sent once, never retried, and
+  moves to the `failed` topic straight away, with Elasticsearch's reason.
 - **One log keeps failing while others save** (`worker.moveStuckLogAfterRounds`), or **a log is about
   to be deleted by Kafka** (`worker.moveToFailedAfterDays`): it moves to the `failed` topic, which
   keeps logs for longer. Nothing reads that topic yet, and logs there don't show up in searches. To
@@ -116,7 +120,9 @@ topic keeps logs (`retentionDays`), Kafka deletes the oldest logs and nothing wa
 run out while creating the index or checking its fields at the start, the worker stops, and you can start it again.
 
 The worker creates the index when it starts, and refuses to start if an existing index stores our
-fields differently, because it would then refuse good logs. Elasticsearch is set never to create an
+fields differently, because it would then refuse good logs. The index is strict: it refuses any field
+we haven't listed, instead of adding it with a type Elasticsearch guesses. A new index is created that
+way, and an existing one is switched to strict at start-up (its data isn't touched). Elasticsearch is set never to create an
 index by itself, so if the index is deleted while the worker runs, the worker pauses and alerts until
 you restart it. Logs that aren't saved yet wait safely in Kafka meanwhile. After pulling a change to
 `docker-compose.yml`, run `docker compose up -d --wait` again to apply it.

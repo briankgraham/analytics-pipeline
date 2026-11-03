@@ -13,8 +13,18 @@ export type ExistingFields = Record<string, { type?: string }>;
 // `id` becomes the document's id. Sending the same id again overwrites the document.
 export type DocumentToSave = { id: string; document: object };
 
+// `badRequest` is true when Elasticsearch answered 400 and the error type says the document itself is
+// the problem. It looked at the document and refused it, so sending it again would get the same answer.
 export type DocumentAnswer =
-  { id: string; saved: true } | { id: string; saved: false; reason: string };
+  { id: string; saved: true } | { id: string; saved: false; reason: string; badRequest: boolean };
+
+// The 400 error types that blame the document. Other 400s, like index_closed_exception, blame the index,
+// so they are not on this list: those logs must wait in Kafka until a person fixes the index.
+const documentProblems = [
+  'document_parsing_exception',
+  'mapper_parsing_exception',
+  'strict_dynamic_mapping_exception',
+];
 
 // Says whether an error from a call here can pass with time: too busy (429), a gateway or server
 // that's briefly unavailable (502, 503, 504), and not getting an answer at all. Anything else, like a
@@ -114,7 +124,8 @@ export class ElasticsearchClient implements Service {
         {
           index,
           settings: { number_of_replicas: replicas },
-          mappings: { properties: fields },
+          // strict: a field we haven't listed is refused, not added with a type Elasticsearch guesses.
+          mappings: { dynamic: 'strict', properties: fields },
         },
         this.withTimeLimit(),
       );
@@ -128,6 +139,11 @@ export class ElasticsearchClient implements Service {
       }
       throw error;
     }
+  }
+
+  // Makes an index refuse fields it doesn't list. Safe to repeat, and it changes no stored data.
+  async makeMappingStrict(index: string): Promise<void> {
+    await this.started().indices.putMapping({ index, dynamic: 'strict' }, this.withTimeLimit());
   }
 
   // Answers with one list of fields for each real index behind the name.
@@ -154,7 +170,12 @@ export class ElasticsearchClient implements Service {
         return { id, saved: true };
       }
       const reason = answer?.error?.reason ?? answer?.error?.type ?? `status ${status}`;
-      return { id, saved: false, reason: `${status}: ${reason}` };
+      return {
+        id,
+        saved: false,
+        reason: `${status}: ${reason}`,
+        badRequest: status === 400 && documentProblems.includes(answer?.error?.type ?? ''),
+      };
     });
   }
 
@@ -178,5 +199,5 @@ export class ElasticsearchClient implements Service {
 // The calls the files above this one use, so their tests can stand in for Elasticsearch.
 export type ElasticsearchCalls = Pick<
   ElasticsearchClient,
-  'createIndex' | 'readIndexFields' | 'saveDocuments'
+  'createIndex' | 'readIndexFields' | 'makeMappingStrict' | 'saveDocuments'
 >;

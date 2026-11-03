@@ -18,15 +18,19 @@ let failedLogs: FailedLog[];
 let doneOffsets: string[];
 // Says which of the logs in each request stay unsaved.
 let unsavedIds: string[];
+// Says which of the logs in each request Elasticsearch answers 400 for.
+let badRequestIds: string[];
 let sendFailedLogs: (logs: FailedLog[]) => Promise<void>;
 let shouldStop: () => boolean;
 
 const saveLogs = async (logs: LogToSave[]): Promise<SaveAnswer> => {
   sentGroups.push(logs.map(({ id }) => id));
   const unsaved = logs.filter(({ id }) => unsavedIds.includes(id));
+  const bad = logs.filter(({ id }) => badRequestIds.includes(id));
   return {
-    savedCount: logs.length - unsaved.length,
+    savedCount: logs.length - unsaved.length - bad.length,
     unsavedLogs: unsaved.map(({ id }) => ({ id, reason: '429: too busy' })),
+    badRequestLogs: bad.map(({ id }) => ({ id, reason: '400: bad field' })),
   };
 };
 
@@ -62,6 +66,7 @@ beforeEach(() => {
   failedLogs = [];
   doneOffsets = [];
   unsavedIds = [];
+  badRequestIds = [];
   shouldStop = () => false;
   sendFailedLogs = async (logs) => {
     failedLogs.push(...logs);
@@ -76,6 +81,69 @@ afterEach(() => {
 });
 
 describe('saving a batch', () => {
+  it('moves a log that got a 400 to the failed topic at once, and carries on past it', async () => {
+    badRequestIds = ['m2'];
+    const answer = await saver()(batchOf(message(1), message(2), message(3)));
+    expect(answer).toBe('finished');
+    expect(failedLogs).toEqual([
+      { id: 'm2', log: good, reason: 'Elasticsearch refused it: 400: bad field' },
+    ]);
+    expect(sentGroups).toEqual([['m1', 'm2'], ['m3']]);
+    expect(doneOffsets.at(-1)).toBe('3');
+  });
+
+  it('pauses, leaving the log in Kafka, if the failed topic cannot be written to', async () => {
+    badRequestIds = ['m1'];
+    sendFailedLogs = async () => {
+      throw new Error('kafka is down');
+    };
+    expect(await saver()(batchOf(message(1), message(2)))).toBe('pause');
+    expect(doneOffsets).toEqual([]);
+    expect(failedLogs).toEqual([]);
+  });
+
+  it('moves the 400 log once the failed topic works again, instead of skipping it', async () => {
+    badRequestIds = ['m1'];
+    let working = false;
+    sendFailedLogs = async (logs) => {
+      if (!working) {
+        throw new Error('kafka is down');
+      }
+      failedLogs.push(...logs);
+    };
+    const save = saver();
+    const batch = batchOf(message(1), message(2));
+    expect(await save(batch)).toBe('pause');
+    working = true;
+    expect(await save(batch)).toBe('finished');
+    expect(failedLogs.map(({ id }) => id)).toEqual(['m1']);
+  });
+
+  it('marks a 400 log done and pauses on the unsaved log after it, then does not move it twice', async () => {
+    badRequestIds = ['m1'];
+    unsavedIds = ['m2'];
+    const save = saver();
+    const batch = batchOf(message(1), message(2));
+    expect(await save(batch)).toBe('pause');
+    expect(doneOffsets).toEqual(['1']);
+    expect(failedLogs.map(({ id }) => id)).toEqual(['m1']);
+
+    expect(await save(batchOf(message(1), message(2)))).toBe('pause');
+    expect(failedLogs.map(({ id }) => id)).toEqual(['m1']);
+    expect(sentGroups.at(-1)).toEqual(['m2']);
+  });
+
+  it('keeps both a 400 log and an unsaved log in Kafka if the failed topic cannot be written to', async () => {
+    badRequestIds = ['m1'];
+    unsavedIds = ['m2'];
+    sendFailedLogs = async () => {
+      throw new Error('kafka is down');
+    };
+    expect(await saver()(batchOf(message(1), message(2), message(3)))).toBe('pause');
+    expect(doneOffsets).toEqual([]);
+    expect(failedLogs).toEqual([]);
+  });
+
   it('saves in groups of bulkSize and marks everything done', async () => {
     const answer = await saver()(batchOf(message(1), message(2), message(3)));
     expect(answer).toBe('finished');
@@ -91,7 +159,7 @@ describe('saving a batch', () => {
       sendFailedLogs,
       saveLogs: async (sent) => {
         logs.push(...sent);
-        return { savedCount: sent.length, unsavedLogs: [] };
+        return { savedCount: sent.length, unsavedLogs: [], badRequestLogs: [] };
       },
     });
     await save(batchOf(message(1, JSON.stringify({ ...good, extra: 'ignored' }))));
