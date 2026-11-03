@@ -65,17 +65,17 @@ api/              HTTP server: receives logs, answers searches; server.ts starts
 api/routes/       one file per URL the API answers, in a folder per version (v1/); all-routes.ts lists them
 api/controllers/  the last step of each route: reads the request, calls the service, chooses the reply; one file per route
 api/services/     what each controller calls to do the route's work, as plain functions; not the same as the top-level services/ folder
+api/build-search-criteria.ts  checks a search URL's values and turns them into criteria for the search service
 api/dependencies.ts  what the routes need from outside (like sending a log); server.ts fills it in
 api/middleware/   the steps a request passes through before its controller, one function per file, named for what it does
 worker/           reads logs from Kafka and saves them to Elasticsearch; worker.ts starts and closes it all
-search/           building a log search: build-criteria.ts turns URL values into criteria, build-query.ts adds our choices
 scripts/          small helper scripts, such as sending a test log
 logs/             what a log is (its shape, and checking one), used by both the API and the worker
 tests/            every test, in folders that match the code folders (tests/api tests the api folder)
 config/           settings for each environment: local (in use), sandbox, stage, prod; read-config.ts has checks the readers share
 kafka/            client.ts is the base layer that talks to Kafka, sending and reading; send-failed-logs.ts builds on it; create-topics.ts creates topics
 services/         what every Service class follows: one instance of a class, with init and close; run-program.ts is the one path for starting and closing
-elasticsearch/    client.ts is the base layer that talks to Elasticsearch; logs-index.ts and save-logs.ts build on it
+elasticsearch/    client.ts is the base layer that talks to Elasticsearch; logs-index.ts, save-logs.ts and build-logs-query.ts build on it
 elasticsearch/search-criteria-builder/  turns a list of search criteria into a query; knows nothing about logs and imports nothing from outside this folder, so it could become its own library
 retries/          trying a failed call again, with waits between tries
 docker-compose.yml  runs Kafka and Elasticsearch locally

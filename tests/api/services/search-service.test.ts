@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { LogCriterion } from '../../../search/build-criteria.ts';
+import type { LogCriterion } from '../../../elasticsearch/build-logs-query.ts';
 import { createLogSearcher } from '../../../api/services/search-service.ts';
 
 const log = { service: 'checkout', level: 'error', message: 'card declined' };
